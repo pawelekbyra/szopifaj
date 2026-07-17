@@ -1,0 +1,44 @@
+name: Docs Sync (AI-assisted)
+
+# Po zmianach w kodzie modułów, Claude analizuje diff i proponuje aktualizacje dokumentacji
+# jako część TEGO SAMEGO PR-a — nigdy jako auto-commit na main. Human review przed merge
+# jest obowiązkowy, tak jak review samego kodu. Wzorzec: docs/solutions.md w
+# anthropics/claude-code-action, "Sync API Documentation".
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "packages/*/src/**/*.ts"
+
+jobs:
+  docs-sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Ten PR zmienia kod w packages/*/src. Zadanie:
+            1. Przejrzyj zmiany (git diff wobec bazowej gałęzi PR-a).
+            2. Jeśli zmiana dotyczy CLAUDE.md-relevant faktów (struktura modułów, nowe
+               providery, zmiana kontraktu API, decyzja architektoniczna) — zaproponuj
+               aktualizację CLAUDE.md lub odpowiedniego pliku w docs/plans/.
+            3. NIE zmieniaj kodu produkcyjnego. NIE twórz nowych plików dokumentacji poza
+               istniejącą strukturą (CLAUDE.md, docs/plans/*.md) — aktualizuj istniejące.
+            4. Jeśli diff nie wymaga zmian w dokumentacji (np. czysty refaktor bez zmiany
+               zachowania/kontraktu), nie rób nic — nie generuj zmian na siłę.
+            5. Commituj wyłącznie na ten branch PR-a (nie na main), żeby zmiana dokumentacji
+               była widoczna w tym samym review co zmiana kodu.
+          claude_args: |
+            --allowedTools "Read,Edit,Bash(git:*)"
