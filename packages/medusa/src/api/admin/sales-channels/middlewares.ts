@@ -59,6 +59,16 @@ export const adminSalesChannelRoutesMiddlewares: MiddlewareRoute[] = [
         QueryConfig.retrieveTransformQueryConfig
       ),
     ],
+    // Zawężenie do sklepików admina — dodane 2026-07-17 (multi-store, patrz
+    // docs/plans/multi-store-platform.md). Polityka globalna (brak
+    // resource_id, np. wildcard super-admina) nadal przechodzi zawsze.
+    scopedPolicies: {
+      policies: [
+        { resource: Entities.sales_channel, operation: PolicyOperation.read },
+      ],
+      resourceIdField: "id",
+      resourceIdExtractor: (req) => req.params.id,
+    },
   },
   {
     method: ["POST"],
@@ -93,6 +103,13 @@ export const adminSalesChannelRoutesMiddlewares: MiddlewareRoute[] = [
         operation: PolicyOperation.update,
       },
     ],
+    scopedPolicies: {
+      policies: [
+        { resource: Entities.sales_channel, operation: PolicyOperation.update },
+      ],
+      resourceIdField: "id",
+      resourceIdExtractor: (req) => req.params.id,
+    },
   },
   {
     method: ["DELETE"],
@@ -104,6 +121,13 @@ export const adminSalesChannelRoutesMiddlewares: MiddlewareRoute[] = [
         operation: PolicyOperation.delete,
       },
     ],
+    scopedPolicies: {
+      policies: [
+        { resource: Entities.sales_channel, operation: PolicyOperation.delete },
+      ],
+      resourceIdField: "id",
+      resourceIdExtractor: (req) => req.params.id,
+    },
   },
   {
     method: ["POST"],

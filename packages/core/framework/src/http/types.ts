@@ -72,6 +72,21 @@ export type MiddlewareRoute = {
   policies?:
     | { resource: string; operation: string }
     | Array<{ resource: string; operation: string | string[] }>
+  /**
+   * Wariant `policies` zawężony do instancji zasobu (np. konkretnego
+   * sklepiku/`sales_channel_id`) — dodane 2026-07-17 pod multi-sklepowość.
+   * Patrz docs/plans/multi-store-platform.md i
+   * packages/core/framework/src/policies/has-permission.ts.
+   */
+  scopedPolicies?: {
+    policies:
+      | { resource: string; operation: string }
+      | Array<{ resource: string; operation: string | string[] }>
+    /** Nazwa pola niosącego id instancji, np. "sales_channel_id". */
+    resourceIdField: string
+    /** Opcjonalna własna funkcja wyciągająca id z requestu (domyślnie query/body). Może być asynchroniczna (np. lookup w bazie). */
+    resourceIdExtractor?: (req: any) => string | undefined | Promise<string | undefined>
+  }
 }
 
 export type MiddlewaresConfig = {
@@ -108,6 +123,14 @@ export type MiddlewareDescriptor = {
   policies?:
     | { resource: string; operation: string }
     | Array<{ resource: string; operation: string | string[] }>
+  /** Patrz MiddlewareRoute.scopedPolicies — multi-store, dodane 2026-07-17. */
+  scopedPolicies?: {
+    policies:
+      | { resource: string; operation: string }
+      | Array<{ resource: string; operation: string | string[] }>
+    resourceIdField: string
+    resourceIdExtractor?: (req: any) => string | undefined | Promise<string | undefined>
+  }
 }
 
 export type BodyParserConfigRoute = {

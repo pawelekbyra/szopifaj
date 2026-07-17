@@ -140,4 +140,12 @@ export const LINKS = {
     Modules.RBAC,
     "rbac_role_id"
   ),
+  // Dodane 2026-07-17 pod multi-sklepowość: który admin (User) zarządza
+  // którym sklepikiem (SalesChannel). Patrz docs/plans/multi-store-platform.md.
+  UserSalesChannel: composeLinkName(
+    Modules.USER,
+    "user_id",
+    Modules.SALES_CHANNEL,
+    "sales_channel_id"
+  ),
 }

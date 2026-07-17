@@ -234,3 +234,147 @@ async function fetchRolePolicies(
 
   return rolePoliciesMap
 }
+
+/**
+ * ---------------------------------------------------------------------------
+ * Scoped permissions (multi-store, dodane 2026-07-17)
+ * ---------------------------------------------------------------------------
+ *
+ * Rozszerzenie o sprawdzanie *instancji* zasobu (np. konkretnego
+ * `sales_channel_id`), nie tylko `resource:operation`. Celowo osobna
+ * funkcja/ścieżka danych od {@link hasPermission} — nie modyfikujemy
+ * istniejącego, używanego w ~30 miejscach mechanizmu, żeby nie ryzykować
+ * regresji. Patrz docs/plans/multi-store-platform.md.
+ *
+ * Semantyka `rbac_policy.resource_id`:
+ * - `null`/brak → polityka globalna dla resource+operation (np. wildcard
+ *   super-admina `*:*`) — przechodzi zawsze, niezależnie od żądanego
+ *   `resourceId`.
+ * - konkretna wartość → polityka dotyczy tylko tej instancji zasobu
+ *   (np. `sales_channel_id` sklepiku, którym admin zarządza).
+ */
+
+export type ScopedPermissionAction = {
+  resource: string
+  operation: string | string[]
+  /**
+   * Id instancji zasobu, którego dotyczy żądanie (np. sales_channel_id
+   * wyciągnięty z requestu). Jeśli nie podane, zachowuje się jak
+   * {@link hasPermission} (tylko resource+operation).
+   */
+  resourceId?: string
+}
+
+export type HasScopedPermissionInput = {
+  roles: string | string[]
+  actions: ScopedPermissionAction | ScopedPermissionAction[]
+  container: MedusaContainer
+}
+
+type ScopedPolicy = {
+  resource: string
+  operation: string
+  resource_id: string | null
+}
+
+function scopedPolicyAllows(
+  policies: ScopedPolicy[],
+  resource: string,
+  operation: string,
+  resourceId: string | undefined
+): boolean {
+  for (const policy of policies) {
+    const resourceMatches =
+      policy.resource === resource || policy.resource === WILDCARD
+    if (!resourceMatches) continue
+
+    const operationMatches =
+      policy.operation === operation || policy.operation === WILDCARD
+    if (!operationMatches) continue
+
+    // Polityka globalna (brak resource_id) — zawsze przechodzi.
+    if (!policy.resource_id) return true
+
+    // Polityka zawężona — musi się zgadzać z żądanym resourceId.
+    if (resourceId && policy.resource_id === resourceId) return true
+  }
+  return false
+}
+
+async function fetchSingleRoleScopedPolicies(
+  roleId: string,
+  container: MedusaContainer
+): Promise<ScopedPolicy[]> {
+  const query = container.resolve(ContainerRegistrationKeys.QUERY)
+
+  return await useCache<ScopedPolicy[]>(
+    async () => {
+      const { data: roles } = await query.graph({
+        entity: "rbac_role",
+        fields: ["id", "policies.*"],
+        filters: { id: roleId },
+      })
+
+      const role = roles[0]
+      if (!role?.policies || !Array.isArray(role.policies)) {
+        return []
+      }
+
+      return role.policies.map((policy: any) => ({
+        resource: policy.resource,
+        operation: policy.operation,
+        resource_id: policy.resource_id ?? null,
+      }))
+    },
+    {
+      container,
+      key: `scoped:${roleId}`,
+      tags: [`rbac_role:${roleId}`],
+      ttl: 60 * 60 * 24 * 7,
+      providers: ["cache-memory"],
+    }
+  )
+}
+
+/**
+ * Instance-aware wariant {@link hasPermission} — sprawdza nie tylko czy rola
+ * może wykonać `operation` na `resource`, ale też (jeśli polityka jest
+ * zawężona) czy dotyczy konkretnej instancji `resourceId`.
+ */
+export async function hasScopedPermission(
+  input: HasScopedPermissionInput
+): Promise<boolean> {
+  const { roles, actions, container } = input
+
+  const roleIds = Array.isArray(roles) ? roles : [roles]
+  const actionList = Array.isArray(actions) ? actions : [actions]
+  const ffRouter = container.resolve(
+    ContainerRegistrationKeys.FEATURE_FLAG_ROUTER
+  ) as FlagRouter
+
+  const isDisabled = !ffRouter.isFeatureEnabled("rbac")
+  if (isDisabled || !roleIds?.length || !actionList?.length) {
+    return true
+  }
+
+  const policiesPerRole = await Promise.all(
+    roleIds.map((roleId) => fetchSingleRoleScopedPolicies(roleId, container))
+  )
+  const allPolicies = policiesPerRole.flat()
+
+  for (const action of actionList) {
+    const operations = Array.isArray(action.operation)
+      ? action.operation
+      : [action.operation]
+
+    for (const op of operations) {
+      if (
+        !scopedPolicyAllows(allPolicies, action.resource, op, action.resourceId)
+      ) {
+        return false
+      }
+    }
+  }
+
+  return true
+}
