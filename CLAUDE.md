@@ -2,27 +2,38 @@
 
 ## Kontekst projektu (przeczytaj najpierw)
 
-To repozytorium jest **nowym, docelowym backendem** ekosystemu Sklepik — zastępuje fork Spree Commerce w repo `pawelekbyra/sklepik`. Kod źródłowy wywodzi się z Medusa.js (`packages/`, skopiowane 2026-07-17 z github.com/medusajs/medusa, licencja MIT — patrz `LICENSE`), ale **to nie jest fork i nie jest zależnością npm od `@medusajs/*`**. Historia gita zaczyna się od zera, dokumentacja Medusy jest w całości zastąpiona tą tutaj. Nie śledzimy release'ów upstreamu — świadoma decyzja, konsekwencje opisane w `pawelekbyra/sklepik/docs/plans/medusa-migration.md`.
+To repozytorium jest **jedynym aktywnym backendem** ekosystemu Sklepik. Kod źródłowy wywodzi się z Medusa.js (`packages/`, skopiowane 2026-07-17 z github.com/medusajs/medusa, licencja MIT — patrz `LICENSE`), ale **to nie jest fork i nie jest zależnością npm od `@medusajs/*`**. Historia gita zaczyna się od zera, dokumentacja Medusy jest w całości zastąpiona tą tutaj. Nie śledzimy release'ów upstreamu.
 
-Ekosystem: `pawelekbyra/sklepik` (stary backend Spree, żywa produkcja Kakałowego Sklepika do czasu cutover), `pawelekbyra/sklepikFront` (storefront Next.js), `pawelekbyra/edytor-sklepu` (silnik edytora wizualnego, pakiety `@pawelekbyra/*`), **`pawelekbyra/szopifaj` (to repo — nowy backend)**.
+`pawelekbyra/sklepik` (stary backend Spree) to **porzucony eksperyment, nie żywa produkcja i nie zależność** — świadoma decyzja właściciela, nie tymczasowy stan do ochrony. Nie czytać go, nie pracować nad nim, nie traktować jako źródła prawdy o czymkolwiek bieżącym. Reszta ekosystemu: `pawelekbyra/sklepikFront` (storefront Next.js, dziś zbudowany pod API Spree — status podłączenia do tego backendu: patrz `docs/plans/roadmap.md`).
 
-Obowiązkowa lektura przed pracą:
+**`pawelekbyra/edytor-sklepu` (silnik edytora wizualnego) jest wycofany z ekosystemu (2026-07-17).** Rozwiązywał problem self-serve personalizacji dla wielu nietechnicznych właścicieli sklepów. Decyzja o wycofaniu stoi niezależnie od statusu multi-sklepowości (patrz `docs/plans/multi-store-platform.md` — dziś aktywny priorytet): admini w naszym modelu to zaufane osoby, nie anonimowi nietechniczni użytkownicy, więc generyczny page builder nadal nie jest potrzebny — wygląd sklepu piszemy bezpośrednio w kodzie storefrontu. Repo istnieje nadal na GitHubie, ale nie jest częścią aktywnej pracy — nie klonować, nie podłączać, nie traktować jako zależności.
 
-- `pawelekbyra/sklepik/docs/plans/medusa-migration.md` — kanon decyzji o migracji, uzasadnienie, plan.
-- `pawelekbyra/sklepik/docs/plans/fiscal-compliance-poland.md` — moduł fiskalny (KSeF/VAT/kasa fiskalna), budowany od razu na tym repo, główna przewaga różnicująca projektu.
+Obowiązkowa lektura przed pracą — wszystko w tym repo, nic zewnętrznego:
+
+- [`docs/plans/roadmap.md`](docs/plans/roadmap.md) — aktywny status: co zrobione, co dalej, otwarte decyzje.
+- [`docs/plans/fiscal-compliance-poland.md`](docs/plans/fiscal-compliance-poland.md) — moduł fiskalny (KSeF/VAT/kasa fiskalna), główna przewaga różnicująca projektu.
 - [`docs/plans/vision-2026.md`](docs/plans/vision-2026.md) — azymut: dokąd zmierza ten produkt, nie tylko co robi dziś.
+- [`README.md`](README.md) — stan wdrożenia serwera, na bieżąco.
 
 ## Filozofia: nie fork, nie zależność — własność
 
-Kod Medusy jest punktem startowym, nie ograniczeniem. Gdzie architektura/konwencje Medusy nie pasują do celu (zgodność fiskalna, jakość dla pracy agentów AI, głębia funkcjonalna), **przepisujemy, nie naginamy się do ich wzorców**. Priorytet: trzy moduły decydują o tym, czy ten produkt wygrywa — `tax` (silnik fiskalny), `rbac` (dostęp wielosklepowy/księgowa), `order`+workflow orchestration (widoczna, godna zaufania oś czasu zamówienia). Reszta pakietów (`cart`, `pricing`, `product`, `region`, `currency`...) zostaje bliska oryginałowi, dopóki nie ma konkretnego powodu, żeby to zmienić — nie przepisujemy wszystkiego naraz na zapas.
+**🔄 Zmienione 2026-07-17 (odwraca wcześniejsze podejście "reszta zostaje bliska oryginałowi"):** cel to **kompletna, nowoczesna platforma commerce** — wszystkie moduły, jakich potrzebuje poważny sklep internetowy (płatności, promocje, inventory, fulfillment, gift cards, itd.) realnie podłączone i działające — plus **multi-sklepowość**. Moduł fiskalny (`tax`, patrz [`docs/plans/fiscal-compliance-poland.md`](docs/plans/fiscal-compliance-poland.md)) jest jedną z ważnych części tej całości, **nie jest jedynym celem ani punktem wyjścia priorytetów** — nie traktować go jako "sedna" kosztem reszty funkcjonalności.
+
+**Aktywny priorytet (potwierdzone 2026-07-17, po chwilowym odłożeniu i cofnięciu tej decyzji tego samego dnia): multi-sklepowość.** Konkretny, namacalny cel właściciela: móc dać koledze dostęp do jego własnego sklepiku i pokazać, że to realnie działa. Plan: [`docs/plans/multi-store-platform.md`](docs/plans/multi-store-platform.md). Kompletność funkcjonalna pojedynczego sklepu ([`docs/plans/product-2026-audit.md`](docs/plans/product-2026-audit.md)) to ważny, równoległy tor pracy — nie blokuje startu prac nad multi-sklepowością.
+
+Kod Medusy jest punktem startowym, nie ograniczeniem, i **nie jest traktowany jako gotowy, zaufany fundament tylko dlatego, że istnieje.** Audytujemy każdy moduł, który dotykamy — jeśli implementacja jest słaba, prowizoryczna albo da się zrobić lepiej, **przepisujemy, nie kopiujemy bezmyślnie**. To nie jest fork trzymany blisko oryginału z automatu; to nasz kod, za który bierzemy pełną odpowiedzialność jakościową, niezależnie od tego, czy dany fragment akurat wymaga zmiany czy nie.
+
+**Doprecyzowane 2026-07-17: to nie jest wyłącznie reaktywny audyt "sprawdź, gdy akurat dotykasz".** Przy każdym istotnym mechanizmie (nie tylko tam, gdzie już wiemy, że coś jest słabe) aktywnie sprawdzamy, czy podejście Medusy jest najlepszym dostępnym rozwiązaniem dla naszego konkretnego modelu danych/problemu, czy jest coś, co realnie lepiej/szybciej/solidniej rozwiązuje ten sam problem — i wtedy to wdrażamy, niezależnie od tego, czy pasuje do wzorca Medusy. **Nie trzymamy się Medusy w każdym kroku z automatu** — to punkt wyjścia do audytu, nie domyślna odpowiedź.
+
+Kolejność pracy: **najpierw kompletność funkcjonalna** (wszystkie moduły realnie działające + multi-tenant), **wygląd/UI na końcu**. Nie polerować frontendu/storefrontu kosztem brakujących modułów backendu.
 
 ## Protokół dokumentacji (obowiązkowy, częściowo zautomatyzowany)
 
 Dokumentacja ma **zawsze odzwierciedlać rzeczywisty stan projektu**. Mechanizm częściowo automatyczny (patrz `.github/workflows/docs-sync.yml`): przy PR-ach dotykających `packages/*/src/**` Claude analizuje diff i proponuje aktualizacje dokumentacji jako część tego samego PR-a — **zawsze wymaga review człowieka przed merge, nigdy auto-commit na `main`**. To pomaga, nie zwalnia z odpowiedzialności:
 
 1. Po każdym zakończonym zadaniu zweryfikuj, czy proponowane przez automatyzację zmiany dokumentacji są trafne — nie akceptuj ślepo.
-2. Jeśli zadanie było z roadmapy (`medusa-migration.md`/`fiscal-compliance-poland.md`) — zmień jego status tam.
-3. Większe decyzje architektoniczne: nowy plik w `docs/plans/` wg wzorca już ustalonego w `sklepik/docs/plans/_template.md`.
+2. Jeśli zadanie było z roadmapy (`docs/plans/roadmap.md`/`docs/plans/fiscal-compliance-poland.md`) — zmień jego status tam.
+3. Większe decyzje architektoniczne: nowy plik w `docs/plans/` wg wzorca już ustalonego w [`docs/plans/_template.md`](docs/plans/_template.md).
 4. Nie twórz nowych plików-notatek poza tym wzorcem. Aktualizuj istniejące dokumenty.
 5. **Sprawdzaj kod zamiast ufać opisom** — w tej sesji już kilka razy dokumentacja rozjechała się z kodem w innych repo tego ekosystemu; ten mechanizm ma to ograniczyć, nie wyeliminować potrzebę weryfikacji.
 
