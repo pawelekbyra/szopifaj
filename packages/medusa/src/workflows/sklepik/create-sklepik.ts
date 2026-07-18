@@ -22,6 +22,20 @@ import { createRemoteLinkStep } from "@medusajs/core-flows"
  * docs/plans/multi-store-platform.md. Świadomie tylko sales_channel+product
  * na start (zgodnie z Migration Path krok 3 tamtego planu); orders/customers
  * później, tym samym wzorcem.
+ *
+ * inventory_item/price dodane 2026-07-18 — bez nich POST /admin/products
+ * odrzuca każdą próbę utworzenia produktu z wariantem (endpoint wymaga tych
+ * dwóch polityk razem z product:create, patrz middlewares.ts). Te dwa
+ * zasoby NIE są dziś zawężane do sales_channel nigdzie w kodzie (brak
+ * bezpośredniego linku inventory_item/price → sales_channel, w
+ * przeciwieństwie do product), więc to efektywnie uprawnienie globalne w
+ * obrębie operacji create/read/update — właściciel jednego sklepiku mógłby
+ * teoretycznie zobaczyć/edytować inventory_item lub price niepowiązane z
+ * żadnym jego produktem, gdyby ktoś wywołał osobny endpoint tych zasobów
+ * bezpośrednio. Zaakceptowany kompromis na start (bez tego rola jest
+ * bezużyteczna — nie da się sprzedawać produktu bez ceny), do
+ * doprecyzowania jeśli okaże się realnym problemem (patrz Open Questions
+ * w multi-store-platform.md).
  */
 const SKLEPIK_OWNER_PERMISSIONS: { resource: string; operation: string }[] = [
   { resource: "sales_channel", operation: "read" },
@@ -30,6 +44,12 @@ const SKLEPIK_OWNER_PERMISSIONS: { resource: string; operation: string }[] = [
   { resource: "product", operation: "read" },
   { resource: "product", operation: "update" },
   { resource: "product", operation: "delete" },
+  { resource: "inventory_item", operation: "create" },
+  { resource: "inventory_item", operation: "read" },
+  { resource: "inventory_item", operation: "update" },
+  { resource: "price", operation: "create" },
+  { resource: "price", operation: "read" },
+  { resource: "price", operation: "update" },
 ]
 
 /**
