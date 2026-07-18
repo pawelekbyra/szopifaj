@@ -4,7 +4,7 @@
 **Target:** całe repo `szopifaj` + serwer produkcyjny.
 **Depends on:** [`fiscal-compliance-poland.md`](fiscal-compliance-poland.md) (krok 3 poniżej).
 **Author:** właściciel + agent.
-**Last updated:** 2026-07-17.
+**Last updated:** 2026-07-18.
 
 ## Summary
 
@@ -22,7 +22,7 @@ Ten dokument zastępuje `pawelekbyra/sklepik/docs/plans/medusa-migration.md` jak
 
 1. ✅ **Zrobione:** import Medusa.js jako punkt startowy (`packages/`), własny `CLAUDE.md`, `yarn install`/`yarn build` zweryfikowane jako przechodzące czysto.
 2. ⬜ **Następny krok:** audyt `packages/modules/*` (35 modułów — patrz `CLAUDE.md` sekcja "Struktura") — co jest realnie podłączone i działające w `medusa-config.js`, co jest tylko obecne jako źródło ale nieużywane, co brakuje do "kompletnego, nowoczesnego sklepu" (bramki płatności, promocje, gift cards, fulfillment, inventory...). Wynik audytu ma dać konkretną listę do zrobienia zamiast działania na wyczucie.
-3. 🟢 **AKTYWNY PRIORYTET (2026-07-17, potwierdzone dwukrotnie tego samego dnia — patrz Key Decision 4):** model wielosklepowy — jeden admin, wiele sklepików, właściciel jako super-admin z pełnym wglądem. Plan zaprojektowany i zatwierdzony: [`multi-store-platform.md`](multi-store-platform.md). Implementacja jeszcze nierozpoczęta — następny konkretny krok pracy.
+3. 🟡 **W TOKU (2026-07-17, potwierdzone dwukrotnie tego samego dnia — patrz Key Decision 4):** model wielosklepowy — jeden admin, wiele sklepików, właściciel jako super-admin z pełnym wglądem. Plan: [`multi-store-platform.md`](multi-store-platform.md). Scoping RBAC faktycznie zweryfikowany działający 2026-07-18 (wcześniejsze "end-to-end" z 2026-07-17 było nieprawdziwe — patrz `## Log` niżej). Pozostaje: widget przełącznika sklepiku w panelu, scoping `orders`, uprawnienia `inventory_item`/`price` dla właściciela sklepiku.
 3a. ⬜ **Równoległy tor, niebolokujący:** audyt "co potrzeba, żeby pojedynczy sklepik był 10/10 na miarę 2026" — pełna funkcjonalność + integracje. Plan: [`product-2026-audit.md`](product-2026-audit.md). Ważne, ale nie warunkuje startu prac nad multi-sklepowością.
 4. ⬜ **Do zrobienia:** moduł fiskalny (`FiscalProvider` + Fakturownia + kasa fiskalna) — patrz [`fiscal-compliance-poland.md`](fiscal-compliance-poland.md), część kompletnej platformy, nie jej definicja.
 5. ⬜ **Do zrobienia, na końcu:** wygląd/UI storefrontu i panelu — świadomie odłożone, dopóki funkcjonalność nie jest kompletna.
@@ -47,3 +47,27 @@ Ten dokument zastępuje `pawelekbyra/sklepik/docs/plans/medusa-migration.md` jak
 - [`vision-2026.md`](vision-2026.md)
 - [`../../README.md`](../../README.md) — stan wdrożenia serwera, na bieżąco.
 - Archiwum historyczne: `pawelekbyra/sklepik/docs/plans/medusa-migration.md` (nieaktualizowane od 2026-07-17).
+
+## Log
+
+### 2026-07-18 (sesja interaktywna z właścicielem, po nocnych uruchomieniach zaplanowanego agenta)
+
+**Kontekst przed tą sesją:** zaplanowany cykliczny agent (cron co 2h) uruchomił się kilka razy w nocy. Jedno uruchomienie (04:01) zrobiło niewiele; drugie (06:01) urwało się po samym czytaniu dokumentacji; trzecie (07:27) zaczęło realną pracę i przy okazji naprawiło ryzyko przypadkowego zacommitowania katalogu `app/` (sekrety, config) — ale utknęło, bo użyło `AskUserQuestion` w kontekście bez nadzoru i nikt nie mógł odpowiedzieć. Poprawiono instrukcję dla przyszłych uruchomień (zakaz czekania na odpowiedź, samodzielny wybór rozsądnej opcji).
+
+**Co zrobiono w tej sesji:**
+1. Odkryto i naprawiono architektoniczny blocker: format kluczy `rbac_policy` nie pozwalał na zawężone polityki (migracja + `RbacModuleService` + loader super-admina).
+2. Rozszerzono `createSklepikWorkflow` o realne nadanie zawężonej roli RBAC właścicielowi nowego sklepiku (dotąd tego nie robił, mimo dokumentacji twierdzącej inaczej).
+3. Rozszerzono scoped policies na endpointy produktów (dotąd tylko sales-channels).
+4. **Test end-to-end (drugi admin, usunięta rola super-admina, dostęp do cudzego sklepiku/produktu przez API) ujawnił, że scoping nigdy realnie nie działał** — dwa niezależne, systemowe błędy: `MiddlewareFileLoader` gubił pole `scopedPolicies` przy rejestracji routingu (dotyczyło **każdego** endpointu, nie tylko sales-channels/products), oraz surowe zapytanie SQL w `RbacRepository.listPoliciesForRoles` nie pobierało kolumny `resource_id` (istniało od czasu przed dodaniem tej kolumny, nigdy zaktualizowane). Oba naprawione. Szczegóły w `multi-store-platform.md`, sekcja "Trzy błędy, przez które scoping nigdy realnie nie działał".
+5. Potwierdzone testem na żywym serwerze (nie tylko czytaniem kodu): admin widzi własny sklepik/produkt (200), nie widzi cudzego (403) — dla `sales_channel` i `product`, GET/POST/DELETE.
+6. Dane testowe posprzątane (konta `test-owner-a@`, `test-superadmin@`, testowy produkt i sklepik) — poza samym testowym sklepikiem "Sklepik Testowy A", który zostawiono jako żywy dowód działania (sales_channel `sc_01KXT36HWW37BW40FXFMKP76C4`).
+7. Build → migracje → restart → weryfikacja `/health`+`/app` wykonane kilkukrotnie w trakcie iteracji z debugowaniem. **Efekt uboczny do zapamiętania:** ręczne `systemctl stop szopifaj` (zrobione żeby uniknąć wyścigu z trwającym w tle buildem) zatrzymuje przez `Requires=` też `szopifaj-storefront`, a kolejne `systemctl start szopifaj` **nie** wznawia automatycznie storefrontu — trzeba go wystartować osobno. Złapane i naprawione w tej sesji po zgłoszeniu przez właściciela (502 na storefroncie).
+
+**Stan zweryfikowany na koniec sesji:** `szopifaj.service` i `szopifaj-storefront.service` aktywne, `/health`+`/app` 200, storefront 200. 6 nowych commitów lokalnych (niepushowane — brak danych logowania GitHub na serwerze), `git status` czysty.
+
+**Co dalej (następne uruchomienie/sesja):**
+- Widget "przełącznik sklepiku" w topbarze panelu admina + custom route `/app/sklepiki/nowy` (Design Details → Panel "moje sklepiki", nierozpoczęte).
+- Rozstrzygnąć i zaimplementować `inventory_item`/`price` dla właściciela sklepiku (patrz "Znany, nienaprawiony jeszcze gap" w `multi-store-platform.md`) — dziś nie da się utworzyć produktu z wycenionym wariantem jako właściciel sklepiku, tylko jako super-admin.
+- Rozszerzyć scoped policies na `orders` (ostatni zasób z Design Details, jeszcze nietknięty).
+- Middleware storefrontu resolvujący subdomenę → sales_channel/publishable key (Migration Path krok 6) — storefront wciąż ma jeden zahardkodowany klucz.
+

@@ -1,10 +1,10 @@
 # Platforma multi-sklepowa: jeden admin, wiele sklepików
 
-**Status:** 🟢 **Fundament zaimplementowany i zweryfikowany end-to-end (2026-07-17).** RBAC scoping (`resource_id` na `rbac_policy`), link `user_sales_channel`, `createSklepikWorkflow`, endpoint `POST/GET /admin/sklepiki` — wszystko działa na serwerze, przetestowane: utworzenie sklepiku, lista "moje sklepiki", scoped policy check na `/admin/sales-channels/:id` (GET/POST/DELETE). Pozostaje: widget "przełącznik sklepiku" w panelu admina (topbar), rozszerzenie scoped policies na `products`/`orders` (dziś tylko `sales-channels`).
+**Status:** 🟢 **Scoping RBAC faktycznie działa i zweryfikowany end-to-end (2026-07-18).** Poprzedni wpis statusu (2026-07-17) ogłaszał to samo, ale było to nieprawdą — w bazie nie istniała wtedy ani jedna zawężona (`resource_id`) polityka, więc "end-to-end" nigdy realnie nie przetestowało tego, co miało chronić. Sesja 2026-07-18 znalazła i naprawiła trzy niezależne błędy, które razem czyniły scoping martwym kodem (szczegóły w sekcji "RBAC / bezpieczeństwo" i `## Log` w `roadmap.md`). Po naprawie: `createSklepikWorkflow` nadaje właścicielowi zawężoną rolę, a próba dostępu do cudzego `sales_channel`/`product` faktycznie kończy się 403 (potwierdzone testem na żywym serwerze, nie tylko czytaniem kodu). Pozostaje: widget "przełącznik sklepiku" w panelu admina (topbar), rozszerzenie scoped policies na `orders`, uzupełnienie uprawnień właściciela o `inventory_item`/`price` (dziś nie może tworzyć wariantów z cenami — patrz Log).
 **Target:** `packages/modules/rbac`, `packages/modules/sales-channel`, nowy moduł kontrolny (homepage/panel "moje sklepiki"), storefront.
 **Depends on:** [`roadmap.md`](roadmap.md) (krok 3 — multi-tenant).
-**Author:** właściciel + agent (sesja 2026-07-17, po audycie kodu i researchu zewnętrznym).
-**Last updated:** 2026-07-17.
+**Author:** właściciel + agent (sesja 2026-07-17, po audycie kodu i researchu zewnętrznym; poprawki i realna weryfikacja 2026-07-18).
+**Last updated:** 2026-07-18.
 
 ## Summary
 
@@ -84,6 +84,18 @@ Punkt 1 sam w sobie wystarczył w testach — punkty 2-3 zostawione jako dodatko
 **Uwaga do naprawienia przy okazji (bug znaleziony audytem, niezwiązany bezpośrednio z multi-store ale wpłynie na testy):** endpoint `/admin/rbac/me/permissions` pomija dziedziczenie ról (`rbac_role_parent`) przy budowaniu listy uprawnień zwracanej do panelu — do poprawki, gdy będziemy tam pracować.
 
 **Zignorować tabelę `rbac_role_inheritance`** (migracja `Migration20260624200000.ts`) — martwy, nieużywany duplikat koncepcyjny `rbac_role_parent`, nie budować na niej.
+
+### ⚠️ Trzy błędy, przez które scoping nigdy realnie nie działał (znalezione i naprawione 2026-07-18)
+
+Plan powyżej został wdrożony 2026-07-17 i opisany jako "zweryfikowany end-to-end" — nieprawdziwie. W bazie nie istniała wtedy żadna polityka z ustawionym `resource_id` (weryfikacja: `createSklepikWorkflow` jawnie NIE nadawał uprawnień, patrz commit `aac37ea`), więc żaden z trzech poniższych błędów nie miał szans zostać wykryty — ścieżka kodu z prawdziwym `resource_id` po prostu nigdy się nie wykonała.
+
+1. **Unikalny indeks na `rbac_policy.key`** (samo `resource:operation`, bez `resource_id`) uniemożliwiał fizycznie utworzenie zawężonej polityki dla zasobu, który już ma politykę globalną. Naprawa: migracja `Migration20260718073940.ts` zmienia istniejące klucze na `resource:operation:*`, `RbacModuleService.syncRegisteredPolicies` i loader super-admina generują ten format dalej. **Ryzyko dla przyszłych zmian:** jeśli ktoś doda nowy sposób tworzenia polityk globalnych z pominięciem `RbacModuleService`, musi ręcznie dopisać `:*` do klucza, inaczej kolejna próba utworzenia zawężonej polityki dla tego samego resource+operation znowu się wysypie.
+2. **`MiddlewareFileLoader` (`packages/core/framework/src/http/middleware-file-loader.ts`) gubił pole `scopedPolicies`** przy przepisywaniu `MiddlewareRoute` na `MiddlewareDescriptor` — sprawdzał tylko `route.middlewares || route.policies`, a obiekt wynikowy nie miał w ogóle `scopedPolicies`. Efekt: `router.ts`'s `if (route.scopedPolicies && isRbacEnabled)` nigdy nie było prawdziwe, bo `route.scopedPolicies` docierało jako `undefined`, niezależnie od tego co deklarował plik `middlewares.ts`. To był błąd systemowy — dotyczył **każdego** endpointu próbującego użyć `scopedPolicies`, nie tylko sales-channels.
+3. **`RbacRepository.listPoliciesForRoles`** (surowe SQL, `packages/modules/rbac/src/repositories/rbac.ts`) — zapytanie `SELECT` napisane przed dodaniem kolumny `resource_id` nigdy nie zostało zaktualizowane. Każda polityka wracała z `resource_id: null`, więc `scopedPolicyAllows()` traktował ją jak globalną (`if (!policy.resource_id) return true`) i przepuszczał każde żądanie, niezależnie od faktycznego zakresu.
+
+**Metoda znalezienia:** żaden z trzech błędów nie był widoczny w przeglądzie kodu — wszystkie trzy funkcje osobno wyglądają poprawnie. Ujawniły się dopiero przy realnym teście end-to-end: utworzenie drugiego admina, usunięcie mu roli super-admina, założenie sklepiku przez API, próba dostępu do **cudzego** `sales_channel`/`product` z jego tokenem. Wniosek praktyczny: "kod wygląda dobrze" i "zweryfikowane end-to-end" to nie to samo — bez faktycznego requestu z ograniczonym kontem żaden z tych błędów by nie wypłynął.
+
+**Znany, nienaprawiony jeszcze gap:** `SKLEPIK_OWNER_PERMISSIONS` w `create-sklepik.ts` nie zawiera `inventory_item:create`/`price:create` — właściciel sklepiku dziś nie może utworzyć produktu z wariantem mającym cenę (endpoint wymaga tych polityk dodatkowo). Do rozstrzygnięcia: czy dodać je jako kolejne uprawnienia globalne (nie dają się w prosty sposób zawęzić do sklepiku, bo `inventory_item`/`price` nie mają bezpośredniego linku do `sales_channel`), czy zaakceptować że properties/warianty tworzy się bez ceny i dopina się cenę osobno.
 
 ## Migration Path
 
