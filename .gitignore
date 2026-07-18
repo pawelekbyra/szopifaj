@@ -1,5 +1,9 @@
 .env
 node_modules
+
+# katalog wdrożeniowy na serwerze — nieskomitowany celowo (patrz README.md),
+# ale musi być ignorowany żeby git stash -u / git clean go nie zmiotły
+/app/
 *yarn-error.log
 .pnp.*
 .yarn/*
