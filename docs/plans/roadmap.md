@@ -84,3 +84,19 @@ Właściciel zapytał wprost, czy podejście "zaufani admini + RBAC" to nie komp
 
 **Stan na koniec:** RLS włączone i bezpiecznie nieaktywne (jak przed próbą — bez warstwy aplikacji nikt nigdy nie ustawia kontekstu, więc każde zapytanie widzi wszystko). Backend zdrowy, `/health`+`/app` 200, storefront 200. Żadna funkcjonalność nie ucierpiała netto — kilka godzin realnej pracy, ale kod produkcyjny wrócił dokładnie do stanu sprzed próby.
 
+### 2026-07-18, część 3 (scoping orders + middleware storefrontu — Migration Path krok 6 i 7)
+
+**Scoped policies na `orders`:** GET/POST `/admin/orders/:id`, wzorem products (order ma bezpośrednią kolumnę `sales_channel_id`, prostszy przypadek niż product przez link). Właściciel sklepiku dostaje `order:read`. Przetestowane na żywo: własne zamówienie 200, cudze (mimo posiadania `order:read`) 403, konto bez `order:read` w ogóle 403. Znany, już wcześniej udokumentowany brak: lista `/admin/orders` nadal nie zawężona (jak products) — do zamknięcia przez RLS, nie osobną łatką.
+
+**Middleware storefrontu (Migration Path krok 6), w `szopifaj-storefront`:** nowy backendowy endpoint `GET /store/sklepiki/resolve?handle=X` (autoryzowany dowolnym "bootstrap" kluczem) + `createSklepikWorkflow` generujący `handle`+`default_country_code` w metadanych sklepiku. Middleware storefrontu resolvuje pierwszy segment hosta jako handle, dostaje właściwy klucz+kraj, przekazuje klucz dalej nagłówkiem do warstwy danych (ten sam wzorzec co istniejący nagłówek lokalizacji).
+
+**Ważne odkrycie po drodze:** `GET /store/regions` zwraca regiony **wszystkich** sklepików niezależnie od klucza — brak formalnego powiązania sales_channel↔region w Medusie. Bez tego odkrycia funkcja wyglądałaby na działającą (200, bez błędów) ale cicho zawsze pokazywała ten sam, najstarszy region niezależnie od odwiedzanej subdomeny. Naprawione: kraj brany wprost z metadanych/resolve, nie wyliczany.
+
+Przetestowane end-to-end żądaniami z ręcznie ustawianym nagłówkiem `Host` (bez nginx/DNS): domyślna domena → `/pl` (bez regresji), testowy sklepik z regionem Portugalia → `/pt`, poprawnie różne.
+
+**Ograniczenie infrastrukturalne (nie kodowe), do wiedzy właściciela:** dowolne subdomeny na żywo wymagają certyfikatu SSL wildcard (weryfikacja DNS-01) — niemożliwe z `nip.io`, bo nie kontrolujemy jego DNS. Mechanizm w kodzie gotowy i poprawny; do użycia na żywo potrzebna własna domena albo certyfikaty zakładane ręcznie per-sklepik.
+
+**Stan na koniec sesji:** backend i storefront zdrowe, `/health`+`/app`+storefront 200. Commity: 4 nowe w `szopifaj` (orders scoping, handle+resolve, country_code fix, ta notatka), 1 nowy w `szopifaj-storefront` (middleware) — oba repo lokalnie, niepushowane.
+
+**Co dalej:** widget przełącznika sklepiku w panelu (blokowany kwestią gdzie wersjonować kod — `app/src/admin/` nie jest w git, patrz wpis wyżej), scoping list endpointów (przez RLS, gdy warstwa aplikacji RLS zostanie poprawnie zrobiona), rozważenie własnej domeny dla prawdziwych subdomen sklepików.
+
