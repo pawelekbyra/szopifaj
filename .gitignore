@@ -1,5 +1,21 @@
 .env
 node_modules
+
+# katalog wdrożeniowy na serwerze (patrz README.md) — trackujemy realny,
+# ręcznie pisany kod (src/, package.json, tsconfig.json, medusa-config.js —
+# ten ostatni nie zawiera sekretów wprost, tylko process.env.X, patrz sam
+# plik), ignorujemy wyłącznie sekrety i wygenerowany build output.
+# Zawężone 2026-07-18 z wcześniejszego blanket /app/ — ten szerszy wpis
+# przypadkiem chronił też build/sekrety PRZED śledzeniem w git, ale przy
+# okazji czynił niemożliwym trackowanie realnego kodu (np. widgetów panelu
+# admina), które i tak musi żyć w app/src/admin wg konwencji Medusy.
+/app/.env
+/app/.env.*
+/app/dist/
+/app/.medusa/
+/app/public/
+/app/server.log
+/app/node_modules/
 *yarn-error.log
 .pnp.*
 .yarn/*

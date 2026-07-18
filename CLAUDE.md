@@ -45,6 +45,16 @@ Dokumentacja ma **zawsze odzwierciedlać rzeczywisty stan projektu**. Mechanizm 
 
 Odziedziczone z Medusy — `yarn test`, `yarn build` (Turborepo). Do zweryfikowania w kolejnej sesji: czy `yarn install` w ogóle przechodzi czysto na tym wycinku (bez `www/`, `integration-tests/`), zanim cokolwiek się zacznie zmieniać. Nie zakładaj, że działa — sprawdź.
 
+## Autonomia operacyjna (potwierdzone przez właściciela, 2026-07-18)
+
+**Projekt jest w całości w budowie — zero prawdziwych klientów, zero ruchu produkcyjnego, który mógłby ucierpieć.** To tylko kod i infrastruktura testowa. Konsekwencja: agent (interaktywny i zaplanowany/cron) **nie musi pytać właściciela przed operacyjnie ryzykownymi, ale odwracalnymi działaniami** na serwerze `krokodyl` — restart usługi (`systemctl restart szopifaj`/`szopifaj-storefront`), zmiana roli/uprawnień bazy danych, migracje, przełączanie connection stringów, tymczasowa niedostępność serwisu w trakcie deployu. Żadne z tych działań nic nie niszczy — nie ma danych klientów ani ciągłości biznesowej do ochrony.
+
+**Co dalej wymaga jednak wyraźnej zgody, nawet przy tym założeniu:**
+- `git push` (i tak niemożliwe bez danych logowania na serwerze, ale gdyby się pojawiły — nadal pytać).
+- Operacje `git` mogące zgubić pracę bez kopii zapasowej (`git reset --hard`, `git clean`, nadpisanie niezacommitowanych zmian) — nie dlatego że są ryzykowne dla klientów, tylko dlatego że mogą zgubić pracę właściciela/agenta.
+- Nieodwracalne usunięcie danych z bazy (`DROP TABLE`, hard delete zamiast soft-delete) — nie ze względu na klientów, tylko bo to niepotrzebnie nieostrożne, gdy soft-delete/backup są tańsze.
+- Cokolwiek dotyczące pieniędzy/płatności prawdziwych (nie ma ich dziś, ale gdyby się pojawiły).
+
 ## Zasady twarde
 
 - Nie commituj sekretów.

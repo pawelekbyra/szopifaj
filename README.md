@@ -25,6 +25,7 @@ Backend faktycznie działa na serwerze, publicznie po HTTPS: **https://141-253-1
 
 Stack na serwerze:
 - Postgres 16 + Redis 7 jako kontenery Docker (`szopifaj-postgres`, `szopifaj-redis`), związane wyłącznie z `127.0.0.1` — nie wystawione na zewnątrz.
+- **Dwie role Postgresa (od 2026-07-18, pod Row-Level Security — patrz `docs/plans/multi-store-platform.md`):** `szopifaj` (superuser, tylko do migracji/DDL) i `szopifaj_app` (nieuprzywilejowana, używana przez działającą usługę — `DATABASE_URL` w `app/.env`). RLS jest całkowicie ignorowane dla superusera, więc usługa **musi** łączyć się jako `szopifaj_app`, inaczej cała warstwa RLS jest martwa bez błędu. Obie role i grant'y **nie są w git** (jak reszta `app/`) — do odtworzenia ręcznie na nowym serwerze, opis w `multi-store-platform.md`.
 - Aplikacja (`medusa start`) jako usługa systemd `szopifaj.service` (`WorkingDirectory=~/szopifaj/app`), włączona na starcie systemu, restart automatyczny przy awarii. Logi: `~/szopifaj/app/server.log` (na serwerze), status: `sudo systemctl status szopifaj`.
 - Nginx jako reverse proxy (`/etc/nginx/sites-available/szopifaj.conf`) terminujący TLS certyfikatem Let's Encrypt dla `141-253-103-172.nip.io` (ważny do 2026-10-07, auto-renewal przez istniejący `certbot` timer — nie zakładano nowego).
 - Firewall (`iptables`) miał już otwarte porty 80/443 z poprzedniego (porzuconego) deploymentu Spree — nie wymagało zmian.

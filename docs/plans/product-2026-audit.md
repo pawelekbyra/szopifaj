@@ -84,6 +84,7 @@ Ten dokument łączy: (a) audyt modułów Medusy już w repo (co jest gotowe, co
 - ✅ **Rozstrzygnięte researchem 2026-07-17 — kurier:** InPost (patrz Migration Path Etap 2). Nadal otwarte: czy jest już umowa z innym przewoźnikiem, co by to zmieniło.
 - ✅ **Rozstrzygnięte researchem 2026-07-17 — wyszukiwanie:** Meilisearch, nie Algolia/Typesense (patrz Migration Path Etap 3).
 - Kierunek/branding wyglądu storefrontu (Etap 4) — do ustalenia z właścicielem przed startem tej pracy, nie rozstrzygnięte tutaj.
+- **Do zbadania przy pracy nad `fiscal-compliance-poland.md` (zanotowane 2026-07-18, jeszcze nierozstrzygnięte):** integracja z **Odoo (ERP)** — oficjalna wtyczka Medusy synchronizuje produkty/zamówienia/magazyn. Ciekawe konkretnie dlatego, że styka się z głównym wyróżnikiem projektu (fiskalność/księgowość) — może zamknąć część zakresu `fiscal-compliance-poland.md` gotową integracją zamiast budowania własnego raportowania księgowego od zera. Nieprzebadane głębiej — sprawdzić przy starcie prac nad modułem fiskalnym, nie teraz.
 
 ## References
 
