@@ -1,5 +1,9 @@
-import { Modules } from "@medusajs/framework/utils"
-import type { IRegionModuleService, LinkDefinition } from "@medusajs/framework/types"
+import { MedusaError, Modules } from "@medusajs/framework/utils"
+import type {
+  ISalesChannelModuleService,
+  IRegionModuleService,
+  LinkDefinition,
+} from "@medusajs/framework/types"
 import {
   StepResponse,
   WorkflowData,
@@ -12,31 +16,116 @@ import {
   createApiKeysWorkflow,
   createRbacPoliciesWorkflow,
   createRbacRolesWorkflow,
-  createSalesChannelsWorkflow,
   linkSalesChannelsToApiKeyWorkflow,
 } from "@medusajs/core-flows"
 import { createRemoteLinkStep } from "@medusajs/core-flows"
 import { randomBytes } from "node:crypto"
 
 /**
- * Identyfikator subdomeny sklepiku (np. "moj-sklepik-a1b2c3" →
- * moj-sklepik-a1b2c3.szopifaj...) — patrz docs/plans/multi-store-platform.md,
- * sekcja "Storefront". Losowy sufiks zamiast sprawdzania unikalności przez
- * zapytanie-potem-zapis (wyścig przy równoczesnym zakładaniu dwóch
- * sklepików o tej samej nazwie) — prostsze i wystarczające przy skali
- * "kilkanaście-kilkadziesiąt sklepów".
+ * Slug identyfikatora subdomeny sklepiku, BEZ losowego sufiksu (np.
+ * "Ser i Wino" → "ser-i-wino"). Patrz getOrCreateSklepikSalesChannelStep
+ * niżej — sufiks dokładany jest tylko przy realnej kolizji w bazie, nie
+ * zawsze z automatu (do 2026-07-18 było odwrotnie — patrz historia gita).
  */
-function generateSklepikHandle(name: string): string {
-  const slug = name
+function slugifySklepikName(name: string): string {
+  return name
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "") // usuń znaki diakrytyczne (ą→a itd.)
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40)
-  const suffix = randomBytes(3).toString("hex")
-  return slug ? `${slug}-${suffix}` : suffix
 }
+
+function randomHandleSuffix(): string {
+  return randomBytes(3).toString("hex")
+}
+
+/**
+ * Tworzy sales_channel (sklepik) próbując najpierw CZYSTEGO sluga jako
+ * handle (np. "zajebiscie" zamiast "zajebiscie-db9d05") — dopiero gdy baza
+ * faktycznie odrzuci wstawienie jako duplikat (unikalny indeks
+ * IDX_sales_channel_handle_unique, Migration20260718170000), dokładany jest
+ * losowy sufiks. Do 2026-07-18 sufiks był doklejany zawsze, żeby uniknąć
+ * wyścigu "sprawdź czy wolne → potem zapisz" — ten indeks daje tę samą
+ * gwarancję dużo taniej (baza sama odrzuca kolizję), więc większość
+ * sklepików dostaje teraz ładny, czytelny adres.
+ */
+const getOrCreateSklepikSalesChannelStep = createStep(
+  "create-sklepik-sales-channel",
+  async (
+    data: { name: string; countryCode: string },
+    { container }
+  ) => {
+    const service = container.resolve<ISalesChannelModuleService>(
+      Modules.SALES_CHANNEL
+    )
+
+    const baseSlug = slugifySklepikName(data.name)
+
+    const create = (handle: string) => {
+      // `metadata` nie jest zadeklarowane w CreateSalesChannelDTO (tylko w
+      // Update/UpsertSalesChannelDTO), mimo że kolumna istnieje i moduł ją
+      // zapisuje — przypisanie do zmiennej zamiast literału w wywołaniu
+      // omija nadgorliwy excess-property-check TS, bez `as any`.
+      const payload = {
+        name: data.name,
+        metadata: {
+          handle,
+          // Zapisane bezpośrednio z inputu (nie z utworzonego regionu) —
+          // sales_channel i region nie mają formalnego powiązania w
+          // Medusie, patrz komentarz przy default_country_code niżej w
+          // tym pliku / docs/plans/multi-store-platform.md.
+          default_country_code: data.countryCode,
+        },
+      }
+      return service.createSalesChannels(payload)
+    }
+
+    if (!baseSlug) {
+      // Nazwa bez ani jednego znaku a-z0-9 (np. same emoji) — nie ma z
+      // czego zbudować czystego sluga, od razu losowy identyfikator.
+      const created = await create(randomHandleSuffix())
+      return new StepResponse(created, created.id)
+    }
+
+    try {
+      const created = await create(baseSlug)
+      return new StepResponse(created, created.id)
+    } catch (err) {
+      // Błąd dociera tu jako SUROWY błąd Postgresa (code 23505), nie jako
+      // opakowany MedusaError — dbErrorMapper z jakiegoś powodu go tu nie
+      // konwertuje (prawdopodobnie warstwa silnika workflow/Redis między
+      // krokiem a tym catchem). Sprawdzamy oba warianty, żeby nie
+      // przepuścić surowego błędu dalej — dociera on w tej postaci do
+      // ogólnego error-handlera frameworka, który ma osobny, niezwiązany
+      // z nami bug przy braku err.table/err.detail (crashuje zamiast
+      // sformatować odpowiedź).
+      const isHandleCollision =
+        (err as any)?.code === "23505" ||
+        (err instanceof MedusaError &&
+          err.type === MedusaError.Types.INVALID_DATA &&
+          /already exists/i.test(err.message))
+
+      if (!isHandleCollision) {
+        throw err
+      }
+
+      const created = await create(`${baseSlug}-${randomHandleSuffix()}`)
+      return new StepResponse(created, created.id)
+    }
+  },
+  async (createdId, { container }) => {
+    if (!createdId) {
+      return
+    }
+
+    const service = container.resolve<ISalesChannelModuleService>(
+      Modules.SALES_CHANNEL
+    )
+    await service.deleteSalesChannels([createdId])
+  }
+)
 
 /**
  * Region w Medusie wymaga unikalnego przypisania kraju — dwa regiony nie
@@ -180,27 +269,12 @@ export const createSklepikWorkflow = createWorkflow(
   (
     input: WorkflowData<CreateSklepikWorkflowInput>
   ): WorkflowResponse<CreateSklepikWorkflowOutput> => {
-    const salesChannels = createSalesChannelsWorkflow.runAsStep({
-      input: {
-        salesChannelsData: [
-          transform({ input }, (data) => ({
-            name: data.input.name,
-            metadata: {
-              handle: generateSklepikHandle(data.input.name),
-              // Zapisane bezpośrednio z inputu (nie z utworzonego regionu)
-              // — sales_channel i region nie mają formalnego powiązania w
-              // Medusie (/store/regions zwraca WSZYSTKIE regiony ze
-              // wszystkich sklepików niezależnie od klucza — sprawdzone
-              // empirycznie 2026-07-18), więc storefront potrzebuje tej
-              // wartości wprost, żeby wiedzieć który kraj/region pokazać
-              // domyślnie dla tej subdomeny. Patrz
-              // docs/plans/multi-store-platform.md, sekcja "Storefront".
-              default_country_code: data.input.countryCode ?? "pl",
-            },
-          })),
-        ],
-      },
-    })
+    const salesChannel = getOrCreateSklepikSalesChannelStep(
+      transform({ input }, (data) => ({
+        name: data.input.name,
+        countryCode: data.input.countryCode ?? "pl",
+      }))
+    )
 
     const region = getOrCreateSklepikRegionStep(
       transform({ input }, (data) => ({
@@ -222,10 +296,6 @@ export const createSklepikWorkflow = createWorkflow(
       },
     })
 
-    const salesChannel = transform(
-      { salesChannels },
-      (data) => data.salesChannels[0]
-    )
     const apiKey = transform({ apiKeys }, (data) => data.apiKeys[0])
 
     linkSalesChannelsToApiKeyWorkflow.runAsStep({
@@ -252,7 +322,12 @@ export const createSklepikWorkflow = createWorkflow(
       input: transform({ salesChannel, scopedPolicies, input }, (data) => ({
         roles: [
           {
-            name: `Właściciel: ${data.input.name}`,
+            // Dołączony id sales_channel — `rbac_role.name` ma unikalny
+            // constraint, a nazwa sklepiku (input.name) nie jest wymuszona
+            // jako unikalna (w przeciwieństwie do handle, patrz
+            // getOrCreateSklepikSalesChannelStep) — dwa sklepiki o
+            // identycznej nazwie wywalałyby się tu bez tego dopisku.
+            name: `Właściciel: ${data.input.name} (${data.salesChannel.id})`,
             description: `Automatycznie utworzona rola właściciela sklepiku "${data.input.name}" (${data.salesChannel.id}).`,
             policy_ids: data.scopedPolicies.map((p: { id: string }) => p.id),
           },

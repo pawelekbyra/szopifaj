@@ -4,7 +4,7 @@
 **Target:** cała platforma commerce (backend `szopifaj`, storefront, edytor personalizacji).
 **Depends on:** [`fiscal-compliance-poland.md`](fiscal-compliance-poland.md) (moduł fiskalny — część tej całości, nie osobny tor).
 **Author:** właściciel + agent (sesja 2026-07-17, audyt kodu + research zewnętrzny).
-**Last updated:** 2026-07-17.
+**Last updated:** 2026-07-18 (korekta: loyalty-plugin i Redis-warianty oznaczone jako zrobione, patrz `module-audit-2026.md`/`roadmap.md` — treść merytoryczna poza tym bez zmian od 2026-07-17).
 
 ## Summary
 
@@ -24,7 +24,7 @@ Ten dokument łączy: (a) audyt modułów Medusy już w repo (co jest gotowe, co
 ### ✅ Gotowe, solidne (z audytu modułów, sesja 2026-07-17)
 - `promotion` — kody rabatowe, promocje automatyczne, kampanie z budżetami, reguły targetowania. Kompletne.
 - `inventory`/`stock-location` — multi-magazyn, automatyczna rezerwacja. Kompletne.
-- **`@medusajs/loyalty-plugin`** (`packages/plugins/loyalty`) — **poprawka do wcześniejszego audytu**: program lojalnościowy + **karty podarunkowe** (`workflows/gift-cards`) + store credit, pełny kod (admin UI, API store+admin, joby, subskrybery). Zbudowany, ale **nieaktywny** — nie jest wpisany do `plugins[]` w `medusa-config.js`. To jest "włącz, nie buduj od zera".
+- **`@medusajs/loyalty-plugin`** (`packages/plugins/loyalty`) — program lojalnościowy + **karty podarunkowe** (`workflows/gift-cards`) + store credit, pełny kod (admin UI, API store+admin, joby, subskrybery). **✅ Poprawka 2026-07-18: aktywny** w `medusa-config.js` (nie "nieaktywny" jak mówiła poprzednia wersja tego dokumentu) — stan zmienił się między sesjami 2026-07-17/2026-07-18, potwierdzone przez `module-audit-2026.md`.
 - `@medusajs/draft-order` (`packages/plugins/draft-order`) — tworzenie zamówień przez admina w imieniu klienta (przydatne dla obsługi telefonicznej/B2B). Zbudowany, nieaktywny.
 - Auth: email/hasło, Google, GitHub — prod-ready.
 - Pliki: integracja S3 (działa z R2/MinIO) — prod-ready.
@@ -38,7 +38,7 @@ Ten dokument łączy: (a) audyt modułów Medusy już w repo (co jest gotowe, co
 - **Tax: prosty kalkulator systemowy.** Właściwy zakres pracy opisany w [`fiscal-compliance-poland.md`](fiscal-compliance-poland.md), nie duplikować tu.
 - **Wyszukiwanie i rekomendacje AI: nie istnieje.** Rozstrzygnięte researchem 2026-07-17: Meilisearch + oficjalny plugin Medusa v2, patrz Migration Path Etap 3. Rekomendacje na start: reguły na kategoriach/tagach, nie ML.
 - **Porzucone koszyki (abandoned cart recovery)** — brak automatyzacji przypominania o niedokończonym zamówieniu. Częściowo możliwe do zbudowania na już istniejącym `event-bus`+`notification`.
-- **Redis niewykorzystany w pełni** — serwer ma Redis, ale `event-bus`/`cache`/`workflow-engine` chodzą na wariantach in-memory. Tania, szybka poprawka (pół godziny, zero decyzji biznesowych) — podnosi niezawodność (przeżywa restart) i gotowość pod skalowanie.
+- ✅ **Zrobione (nieaktualne w tym miejscu dokumentu do 2026-07-18): Redis.** `event-bus`/`cache`/`workflow-engine` chodzą dziś na wariantach `-redis`, nie in-memory (potwierdzone `app/medusa-config.js` i `module-audit-2026.md`).
 
 ### 🎨 Personalizacja — `edytor-sklepu` WYCOFANY z ekosystemu (decyzja 2026-07-17)
 `edytor-sklepu` (osobne repo, wizualny edytor stron/motywów, 8/12 etapów gotowych) był zaprojektowany pod stary `sklepik`/Spree, pod scenariusz "wielu anonimowych, nietechnicznych właścicieli sklepów samodzielnie edytuje swój wygląd". Nasz model multi-sklepowości ([`multi-store-platform.md`](multi-store-platform.md), dziś aktywny priorytet) zakłada zaufanych adminów, nie anonimowych nietechnicznych użytkowników — więc ten scenariusz nas nie dotyczy niezależnie od statusu multi-sklepowości.
@@ -55,8 +55,8 @@ Ten dokument łączy: (a) audyt modułów Medusy już w repo (co jest gotowe, co
 ## Migration Path — priorytetyzacja
 
 **Etap 1 (tanie, wysoka wartość, brak zależności biznesowych):**
-1. Włączyć `@medusajs/loyalty-plugin` (gift cards + loyalty + store credit) w `medusa-config.js` — kod już istnieje.
-2. Dopiąć Redis do `event-bus`/`cache`/`workflow-engine` zamiast in-memory.
+1. ✅ **Zrobione** (potwierdzone `module-audit-2026.md`, 2026-07-18): `@medusajs/loyalty-plugin` (gift cards + loyalty + store credit) aktywny w `medusa-config.js`.
+2. ✅ **Zrobione** (2026-07-18, przy okazji sesji multi-store, patrz `roadmap.md`): `event-bus`/`cache`/`workflow-engine` chodzą na wariantach `-redis`, nie in-memory.
 3. Skonfigurować SEO (`next-sitemap.js`, metadane, JSON-LD produktowe) na storefroncie.
 4. Audyt Core Web Vitals na już wdrożonym storefroncie demo, poprawki.
 

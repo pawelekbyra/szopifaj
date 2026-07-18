@@ -21,7 +21,7 @@ Ten dokument zastępuje `pawelekbyra/sklepik/docs/plans/medusa-migration.md` jak
 ## Status kroków
 
 1. ✅ **Zrobione:** import Medusa.js jako punkt startowy (`packages/`), własny `CLAUDE.md`, `yarn install`/`yarn build` zweryfikowane jako przechodzące czysto.
-2. ⬜ **Następny krok:** audyt `packages/modules/*` (35 modułów — patrz `CLAUDE.md` sekcja "Struktura") — co jest realnie podłączone i działające w `medusa-config.js`, co jest tylko obecne jako źródło ale nieużywane, co brakuje do "kompletnego, nowoczesnego sklepu" (bramki płatności, promocje, gift cards, fulfillment, inventory...). Wynik audytu ma dać konkretną listę do zrobienia zamiast działania na wyczucie.
+2. ✅ **Zrobione (2026-07-18):** audyt `packages/modules/*` (35 modułów) — pełna tabela statusów + priorytetyzacja w [`module-audit-2026.md`](module-audit-2026.md). **Kluczowy wniosek: 24/35 podłączone i funkcjonalne, ale 3 najważniejsze dla realnego sklepu są tylko szkieletem** — `payment` (jedyny provider to no-op `system`, autoryzuje każdą płatność bez pobrania pieniędzy — **nikt dziś nie może zapłacić naprawdę**, mimo że kompletny kod Stripe z wariantami P24/BLIK już istnieje w repo, po prostu niezarejestrowany), `notification` (zero e-maili do klienta, tylko wewnętrzny feed admina — kod SendGrid gotowy, niepodłączony), `fulfillment` (tylko ręczny, zero kuriera). Implementacja tych punktów (audyt to tylko analiza) — nierozpoczęta.
 3. 🟡 **W TOKU (2026-07-17, potwierdzone dwukrotnie tego samego dnia — patrz Key Decision 4):** model wielosklepowy — jeden admin, wiele sklepików, właściciel jako super-admin z pełnym wglądem. Plan: [`multi-store-platform.md`](multi-store-platform.md). Scoping RBAC faktycznie zweryfikowany działający 2026-07-18 (wcześniejsze "end-to-end" z 2026-07-17 było nieprawdziwe — patrz `## Log` niżej). Właściciel sklepiku może dziś realnie zarządzać własnym katalogiem (produkty z cenami) i nie widzi cudzych danych. Pozostaje: widget przełącznika sklepiku w panelu, scoping `orders`.
 3a. ⬜ **Równoległy tor, niebolokujący:** audyt "co potrzeba, żeby pojedynczy sklepik był 10/10 na miarę 2026" — pełna funkcjonalność + integracje. Plan: [`product-2026-audit.md`](product-2026-audit.md). Ważne, ale nie warunkuje startu prac nad multi-sklepowością.
 4. ⬜ **Do zrobienia:** moduł fiskalny (`FiscalProvider` + Fakturownia + kasa fiskalna) — patrz [`fiscal-compliance-poland.md`](fiscal-compliance-poland.md), część kompletnej platformy, nie jej definicja.
@@ -42,6 +42,7 @@ Ten dokument zastępuje `pawelekbyra/sklepik/docs/plans/medusa-migration.md` jak
 
 ## References
 
+- [`module-audit-2026.md`](module-audit-2026.md) — audyt 35 modułów `packages/modules/*`, krok 2.
 - [`fiscal-compliance-poland.md`](fiscal-compliance-poland.md)
 - [`multi-store-platform.md`](multi-store-platform.md)
 - [`vision-2026.md`](vision-2026.md)

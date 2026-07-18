@@ -2,7 +2,7 @@
 
 **Status:** Draft — azymut ustalony, żadna z trzech ścieżek nie rozpoczęta technicznie.
 **Target:** `szopifaj` (ten backend), głównie moduły `tax`, `payment`, `order`.
-**Depends on:** `pawelekbyra/sklepik/docs/plans/fiscal-compliance-poland.md` (fundament — MVP zgodności fiskalnej musi powstać, zanim ma sens rozszerzać go o poniższe).
+**Depends on:** [`fiscal-compliance-poland.md`](fiscal-compliance-poland.md) (fundament — MVP zgodności fiskalnej musi powstać, zanim ma sens rozszerzać go o poniższe; dokument przeniesiony do tego repo 2026-07-17, nie żyje już w `sklepik`).
 **Author:** właściciel + agent (sesja 2026-07-17, po research-passie "state-of-the-art 2026 fiscal commerce platform")
 **Last updated:** 2026-07-17
 
@@ -49,6 +49,6 @@ Nie zaczynać żadnego z tych trzech kierunków przed ukończeniem MVP zgodnośc
 
 ## References
 
-- `pawelekbyra/sklepik/docs/plans/fiscal-compliance-poland.md` — fundament, na którym te trzy kierunki się opierają.
-- `pawelekbyra/sklepik/docs/plans/medusa-migration.md` — decyzja o backendzie, na którym to wszystko powstaje.
+- [`fiscal-compliance-poland.md`](fiscal-compliance-poland.md) — fundament, na którym te trzy kierunki się opierają (dokument lokalny w tym repo, patrz "Depends on" wyżej).
+- `pawelekbyra/sklepik/docs/plans/medusa-migration.md` — archiwum historyczne: decyzja o migracji na Medusę, nieaktualizowane od 2026-07-17, nie źródło bieżącej prawdy (patrz `CLAUDE.md`).
 - Research-pass 2026-07-17 "State-of-the-art 2026 fiscal commerce platform" — [vatcalc.com ViDA/DRR](https://www.vatcalc.com/eu/eu-2028-digital-reporting-requirements-drr-e-invoice/), [Vertex ViDA guide](https://www.vertexinc.com/en-gb/eu-guide-vat-digital-age-vida), [openbankingtracker.com Poland](https://www.openbankingtracker.com/country/poland), [lendtech.pl PragmaGO](https://www.lendtech.pl/wiadomosci/pragmago-x-przelewy24-finance-juz-dziala-do-150-tys-zl-na-firme-w-90-sekund/), [dev.to tamper-proof audit logs](https://dev.to/robertatkinson3570/the-architecture-behind-tamper-proof-audit-logs-56ek).
