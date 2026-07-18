@@ -1,14 +1,15 @@
 import { Modules } from "@medusajs/framework/utils"
-import type { LinkDefinition } from "@medusajs/framework/types"
+import type { IRegionModuleService, LinkDefinition } from "@medusajs/framework/types"
 import {
+  StepResponse,
   WorkflowData,
   WorkflowResponse,
+  createStep,
   createWorkflow,
   transform,
 } from "@medusajs/framework/workflows-sdk"
 import {
   createApiKeysWorkflow,
-  createRegionsWorkflow,
   createRbacPoliciesWorkflow,
   createRbacRolesWorkflow,
   createSalesChannelsWorkflow,
@@ -36,6 +37,61 @@ function generateSklepikHandle(name: string): string {
   const suffix = randomBytes(3).toString("hex")
   return slug ? `${slug}-${suffix}` : suffix
 }
+
+/**
+ * Region w Medusie wymaga unikalnego przypisania kraju — dwa regiony nie
+ * mogą dzielić tego samego kraju (np. "pl"). Ponieważ region i tak nie ma
+ * formalnego powiązania z sales_channel (patrz "Ważne odkrycie" w
+ * docs/plans/multi-store-platform.md — /store/regions zwraca regiony
+ * wszystkich sklepików niezależnie od klucza; storefront rozstrzyga
+ * kraj/walutę wprost z metadanych sales_channel, nie przez region), każdy
+ * kolejny sklepik dla tego samego kraju może bezpiecznie **reużyć**
+ * istniejący region zamiast próbować utworzyć duplikat, który i tak
+ * Medusa odrzuci błędem "already assigned to a region". Bez tego kroku
+ * drugi (i każdy kolejny) sklepik dla Polski nie dał się założyć — a to
+ * jest dokładnie oczekiwany, najczęstszy przypadek self-signup na
+ * serowymichal.pl.
+ */
+const getOrCreateSklepikRegionStep = createStep(
+  "get-or-create-sklepik-region",
+  async (
+    data: { name: string; currencyCode: string; countryCode: string },
+    { container }
+  ) => {
+    const service = container.resolve<IRegionModuleService>(Modules.REGION)
+
+    const existingRegions = await service.listRegions(
+      {},
+      { relations: ["countries"] }
+    )
+    const existing = existingRegions.find((region) =>
+      region.countries?.some((country) => country.iso_2 === data.countryCode)
+    )
+
+    if (existing) {
+      // Nic nowego nie utworzone — nie ma czego cofać przy kompensacji.
+      return new StepResponse(existing, null)
+    }
+
+    const [created] = await service.createRegions([
+      {
+        name: data.name,
+        currency_code: data.currencyCode,
+        countries: [data.countryCode],
+      },
+    ])
+
+    return new StepResponse(created, created.id)
+  },
+  async (createdRegionId, { container }) => {
+    if (!createdRegionId) {
+      return
+    }
+
+    const service = container.resolve<IRegionModuleService>(Modules.REGION)
+    await service.deleteRegions([createdRegionId])
+  }
+)
 
 /**
  * Zestaw operacji, które właściciel nowego sklepiku dostaje zawężone do
@@ -80,9 +136,11 @@ const SKLEPIK_OWNER_PERMISSIONS: { resource: string; operation: string }[] = [
 
 /**
  * Zakłada nowy sklepik: sales_channel (jednostka "sklepik" w naszym modelu
- * multi-store, patrz docs/plans/multi-store-platform.md) + własny region
- * (waluta/kraj) + publishable API key scoped do tego sales_channel, i łączy
- * zalogowanego admina z nowym sklepikiem (link user_sales_channel).
+ * multi-store, patrz docs/plans/multi-store-platform.md) + region (waluta/
+ * kraj — reużyty, jeśli kraj już ma jakiś region, patrz
+ * getOrCreateSklepikRegionStep powyżej) + publishable API key scoped do
+ * tego sales_channel, i łączy zalogowanego admina z nowym sklepikiem (link
+ * user_sales_channel).
  *
  * NIE tworzy nowej encji `Store` — świadomie odrzucona ścieżka, patrz plan.
  *
@@ -144,17 +202,13 @@ export const createSklepikWorkflow = createWorkflow(
       },
     })
 
-    const regions = createRegionsWorkflow.runAsStep({
-      input: {
-        regions: [
-          transform({ input }, (data) => ({
-            name: data.input.name,
-            currency_code: data.input.currencyCode ?? "pln",
-            countries: [data.input.countryCode ?? "pl"],
-          })),
-        ],
-      },
-    })
+    const region = getOrCreateSklepikRegionStep(
+      transform({ input }, (data) => ({
+        name: data.input.name,
+        currencyCode: data.input.currencyCode ?? "pln",
+        countryCode: data.input.countryCode ?? "pl",
+      }))
+    )
 
     const apiKeys = createApiKeysWorkflow.runAsStep({
       input: {
@@ -172,7 +226,6 @@ export const createSklepikWorkflow = createWorkflow(
       { salesChannels },
       (data) => data.salesChannels[0]
     )
-    const region = transform({ regions }, (data) => data.regions[0])
     const apiKey = transform({ apiKeys }, (data) => data.apiKeys[0])
 
     linkSalesChannelsToApiKeyWorkflow.runAsStep({

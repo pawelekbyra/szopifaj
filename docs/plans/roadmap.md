@@ -123,3 +123,20 @@ Przetestowane end-to-end żądaniami z ręcznie ustawianym nagłówkiem `Host` (
 
 **Stan repo na przerwanie:** `git status` czysty w obu repo (`szopifaj`, `szopifaj-storefront`), wszystko zacommitowane lokalnie, nic niepushowane (jak zawsze — brak danych logowania GitHub). Żadnych osieroconych procesów w tle (zweryfikowane `ps aux`).
 
+### 2026-07-18, część 5 (self-signup publiczny + strona serowymichal.pl)
+
+**Kontekst:** właściciel kupił domenę `serowymichal.pl` (home.pl) i poprosił o stronę startową pozwalającą każdemu założyć własny sklepik od razu, bez zaproszenia — zmiana wcześniejszej decyzji "zamknięta/zaproszeniowa" (Key Decision 7 w `multi-store-platform.md`, zaktualizowane). Próba zlecenia tego headless-agentowi na serwerze (`claude -p` przez SSH) nie ruszyła — natychmiastowy limit sesji konta na serwerze (reset 19:00 UTC), zero zmian w produkcji z tej próby. Zadanie wykonane bezpośrednio przez sesję interaktywną z właścicielem.
+
+**Zrobione i przetestowane end-to-end na żywym serwerze:**
+1. Nowy publiczny endpoint `POST /admin/sklepiki/self-signup` + workflow `self-signup.ts` (User + link auth identity + `createSklepikWorkflow`) — wzorem `acceptInviteWorkflow`, ale bez wymogu zaproszenia. Wymagał własnego wpisu w `middlewares.ts` (`authenticate("user", ["bearer"], { allowUnregistered: true })`) — samo `AUTHENTICATE = false` w route.ts nie wystarczało, `req.auth_context` przychodził `undefined` bez tego wpisu (znalezione i naprawione).
+2. Naprawiony realny blocker w `createSklepikWorkflow`: druga próba założenia sklepiku dla tego samego kraju (`pl`) zawsze się wywalała ("already assigned to a region") — nowy krok `getOrCreateSklepikRegionStep` reużywa istniejący region zamiast tworzyć duplikat.
+3. Statyczna strona `serowymichal.pl` (`/var/www/serowymichal/index.html`, nginx serwuje bezpośrednio, bez buildu/usługi) — formularz "Załóż sklepik" + link do logowania w istniejącym panelu admina.
+4. Nginx vhost + `ADMIN_CORS`/`AUTH_CORS` rozszerzone o domenę. DNS w home.pl konfigurowany równolegle przez właściciela — na razie tylko HTTP, certbot do zrobienia po propagacji DNS.
+5. Przetestowane end-to-end na żywo: rejestracja → self-signup → login → własny sklepik widoczny, cudzy (`Sklepik Testowy A`) **403**. Dane testowe posprzątane ręcznie SQL-em po teście, `Sklepik Testowy A` nietknięty.
+
+Szczegóły: `docs/plans/multi-store-platform.md`, sekcja "Public self-signup + strona startowa serowymichal.pl".
+
+**Stan na koniec:** `szopifaj.service` zdrowy (`/health` 200, restart wykonany dwukrotnie w trakcie iteracji), storefront nietknięty. Commity lokalne, niepushowane (jak zawsze).
+
+**Co dalej:** certbot dla `serowymichal.pl` gdy DNS się rozpropaguje; ewentualny rate-limiting/captcha na self-signup, jeśli ruch to uzasadni.
+
