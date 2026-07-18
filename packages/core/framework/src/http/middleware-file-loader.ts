@@ -135,9 +135,12 @@ export class MiddlewareFileLoader {
           })
         }
 
-        if (route.middlewares || route.policies) {
+        if (route.middlewares || route.policies || route.scopedPolicies) {
           const middlewares = route.middlewares ?? []
-          if (route.policies && !route.middlewares?.length) {
+          if (
+            (route.policies || route.scopedPolicies) &&
+            !route.middlewares?.length
+          ) {
             middlewares.push((_, __, next) => {
               next()
             })
@@ -149,6 +152,12 @@ export class MiddlewareFileLoader {
               matcher: matcher,
               methods: route.methods,
               policies: route.policies,
+              // Zgubione tutaj do 2026-07-18 — scopedPolicies był w typie
+              // MiddlewareRoute i egzekwowany w router.ts, ale nigdy nie
+              // przechodził przez ten loader do MiddlewareDescriptor, więc
+              // zawężone polityki nigdy realnie nie działały (patrz
+              // docs/plans/multi-store-platform.md, sekcja Log).
+              scopedPolicies: route.scopedPolicies,
             })
           })
         }
