@@ -39,7 +39,7 @@ export default async ({
 
   const policy = await rbacPolicyService.upsert({
     id: "rpol_super_admin",
-    key: `${WILDCARD}:${WILDCARD}`,
+    key: `${WILDCARD}:${WILDCARD}:${WILDCARD}`,
     resource: WILDCARD,
     operation: WILDCARD,
     name: "Super Admin",

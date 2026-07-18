@@ -37,7 +37,7 @@ type InjectedDependencies = {
   >
 }
 
-const SUPER_ADMIN_KEY = `${WILDCARD}:${WILDCARD}`
+const SUPER_ADMIN_KEY = `${WILDCARD}:${WILDCARD}:${WILDCARD}`
 
 export default class RbacModuleService
   extends MedusaService({
@@ -83,9 +83,16 @@ export default class RbacModuleService
   private async syncRegisteredPolicies(
     @MedusaContext() sharedContext: Context = {}
   ): Promise<void> {
+    // Klucz w formacie resource:operation:resource_id ("*" = globalna,
+    // niezawężona polityka) — patrz docs/plans/multi-store-platform.md.
+    // Ta synchronizacja zarządza wyłącznie politykami globalnymi
+    // (resource_id=NULL); zawężone polityki per-sklepik (utworzone np. przez
+    // createSklepikWorkflow) mają zawsze konkretny resource_id i muszą być
+    // niewidoczne dla tej pętli, inaczej zostałyby tu potraktowane jako
+    // "nierozpoznane" i przy każdym starcie serwera miękko skasowane.
     const registeredPolicies = Object.entries(Policy).map(
       ([name, { resource, operation, description }]) => ({
-        key: `${resource}:${operation}`,
+        key: `${resource}:${operation}:${WILDCARD}`,
         name,
         resource,
         operation,
@@ -95,12 +102,14 @@ export default class RbacModuleService
 
     const registeredKeys = registeredPolicies.map((p) => p.key)
 
-    // Fetch all existing policies (including soft-deleted ones)
-    const existingPolicies = await this.listRbacPolicies(
+    // Fetch all existing GLOBAL policies (including soft-deleted ones) —
+    // zawężone (resource_id != null) celowo pominięte, patrz komentarz wyżej.
+    const allExistingPolicies = await this.listRbacPolicies(
       {},
       { withDeleted: true },
       sharedContext
     )
+    const existingPolicies = allExistingPolicies.filter((p) => !p.resource_id)
 
     const existingPoliciesMap = new Map(existingPolicies.map((p) => [p.key, p]))
 
