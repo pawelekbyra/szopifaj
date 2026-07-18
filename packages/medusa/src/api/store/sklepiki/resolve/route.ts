@@ -27,7 +27,13 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
 
   const { data } = await query.graph({
     entity: "sales_channel",
-    fields: ["id", "name", "publishable_api_keys.id", "publishable_api_keys.token"],
+    fields: [
+      "id",
+      "name",
+      "metadata",
+      "publishable_api_keys.id",
+      "publishable_api_keys.token",
+    ],
     filters: { metadata: { handle } } as any,
   })
 
@@ -43,5 +49,10 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     sales_channel_id: salesChannel.id,
     name: salesChannel.name,
     publishable_key: publishableKey,
+    // /store/regions zwraca regiony wszystkich sklepików niezależnie od
+    // klucza (sprawdzone empirycznie 2026-07-18) — storefront potrzebuje
+    // tej wartości wprost, patrz komentarz w create-sklepik.ts.
+    default_country_code: (salesChannel.metadata as { default_country_code?: string } | null)
+      ?.default_country_code,
   })
 }

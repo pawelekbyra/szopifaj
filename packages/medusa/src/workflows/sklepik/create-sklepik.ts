@@ -127,7 +127,18 @@ export const createSklepikWorkflow = createWorkflow(
         salesChannelsData: [
           transform({ input }, (data) => ({
             name: data.input.name,
-            metadata: { handle: generateSklepikHandle(data.input.name) },
+            metadata: {
+              handle: generateSklepikHandle(data.input.name),
+              // Zapisane bezpośrednio z inputu (nie z utworzonego regionu)
+              // — sales_channel i region nie mają formalnego powiązania w
+              // Medusie (/store/regions zwraca WSZYSTKIE regiony ze
+              // wszystkich sklepików niezależnie od klucza — sprawdzone
+              // empirycznie 2026-07-18), więc storefront potrzebuje tej
+              // wartości wprost, żeby wiedzieć który kraj/region pokazać
+              // domyślnie dla tej subdomeny. Patrz
+              // docs/plans/multi-store-platform.md, sekcja "Storefront".
+              default_country_code: data.input.countryCode ?? "pl",
+            },
           })),
         ],
       },
