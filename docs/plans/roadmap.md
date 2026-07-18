@@ -72,3 +72,15 @@ Ten dokument zastępuje `pawelekbyra/sklepik/docs/plans/medusa-migration.md` jak
 - Rozszerzyć scoped policies na `orders` (ostatni zasób z Design Details, jeszcze nietknięty).
 - Middleware storefrontu resolvujący subdomenę → sales_channel/publishable key (Migration Path krok 6) — storefront wciąż ma jeden zahardkodowany klucz.
 
+### 2026-07-18, część 2 (Postgres RLS — właściciel zapytał czy model RBAC to nie skrót)
+
+Właściciel zapytał wprost, czy podejście "zaufani admini + RBAC" to nie kompromis kosztem solidności, w porównaniu do pełnej separacji modułowej jak we wtyczkach marketplace. Research potwierdził: **Postgres Row-Level Security to faktyczny standard branżowy** dla tego dokładnie problemu — obrona w głębi, baza fizycznie odmawia niezależnie od poprawności kodu aplikacji. Zapisane jako Key Decision 9 w `multi-store-platform.md`.
+
+**Zrobione i zweryfikowane:**
+- Nowa nieuprzywilejowana rola bazy `szopifaj_app` (dotychczasowa `szopifaj` jest superuserem, dla którego RLS jest całkowicie ignorowane) — usługa działa na niej od tej sesji.
+- Polityki RLS na `product`/`sales_channel`, **SELECT-only** (ważna, dwukrotnie odkrywana tego dnia semantyka Postgresa: brak `FOR` klauzuli obejmuje też zapis tym samym warunkiem co odczyt, blokując tworzenie produktu w tej samej transakcji co jego link do sklepiku) — przetestowane surowym SQL i pełnym API.
+
+**Próbowane i cofnięte:** warstwa aplikacji (middleware + hak na `client.acquireConnection` we wspólnym połączeniu Knex, ustawiający kontekst per-request) — zaimplementowana w pełni, zbudowana, wdrożona, **złamała tworzenie produktu** bo `createProductsWorkflow` z rdzenia Medusy sam wewnętrznie odczytuje dopiero co utworzony produkt zanim jego link do sklepiku istnieje. Cofnięte w całości, zweryfikowane (produkt znów da się tworzyć, `git status` czysty). Pełny opis przyczyny i dwie możliwe drogi naprawy w `multi-store-platform.md`, sekcja "Row-Level Security".
+
+**Stan na koniec:** RLS włączone i bezpiecznie nieaktywne (jak przed próbą — bez warstwy aplikacji nikt nigdy nie ustawia kontekstu, więc każde zapytanie widzi wszystko). Backend zdrowy, `/health`+`/app` 200, storefront 200. Żadna funkcjonalność nie ucierpiała netto — kilka godzin realnej pracy, ale kod produkcyjny wrócił dokładnie do stanu sprzed próby.
+
