@@ -3,7 +3,8 @@ import {
   validateAndTransformQuery,
 } from "@medusajs/framework"
 import { MiddlewareRoute } from "@medusajs/framework/http"
-import { PolicyOperation } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, PolicyOperation } from "@medusajs/framework/utils"
+import type { AuthenticatedMedusaRequest } from "@medusajs/framework/http"
 import * as QueryConfig from "./query-config"
 import { Entities } from "./query-config"
 import {
@@ -23,6 +24,24 @@ import {
   AdminTransferOrderToGuest,
   AdminUpdateOrder,
 } from "./validators"
+
+/**
+ * Wyciąga sales_channel_id zamówienia na potrzeby scoped RBAC (multi-store,
+ * patrz docs/plans/multi-store-platform.md). W przeciwieństwie do produktu,
+ * order ma bezpośrednią kolumnę sales_channel_id (nie tabelę linkującą) —
+ * prostszy przypadek.
+ */
+async function extractOrderSalesChannelId(
+  req: AuthenticatedMedusaRequest
+): Promise<string | undefined> {
+  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
+  const { data } = await query.graph({
+    entity: "order",
+    fields: ["id", "sales_channel_id"],
+    filters: { id: req.params.id },
+  })
+  return data[0]?.sales_channel_id ?? undefined
+}
 
 export const adminOrderRoutesMiddlewares: MiddlewareRoute[] = [
   {
@@ -75,6 +94,14 @@ export const adminOrderRoutesMiddlewares: MiddlewareRoute[] = [
         QueryConfig.retrieveTransformQueryConfig
       ),
     ],
+    // Zawężenie do sklepików admina — dodane 2026-07-18 (multi-store, patrz
+    // docs/plans/multi-store-platform.md). Polityka globalna (brak
+    // resource_id, np. wildcard super-admina) nadal przechodzi zawsze.
+    scopedPolicies: {
+      policies: [{ resource: Entities.order, operation: PolicyOperation.read }],
+      resourceIdField: "id",
+      resourceIdExtractor: extractOrderSalesChannelId,
+    },
   },
   {
     method: ["POST"],
@@ -92,6 +119,11 @@ export const adminOrderRoutesMiddlewares: MiddlewareRoute[] = [
         operation: PolicyOperation.update,
       },
     ],
+    scopedPolicies: {
+      policies: [{ resource: Entities.order, operation: PolicyOperation.update }],
+      resourceIdField: "id",
+      resourceIdExtractor: extractOrderSalesChannelId,
+    },
   },
   {
     method: ["GET"],

@@ -19,9 +19,7 @@ import { createRemoteLinkStep } from "@medusajs/core-flows"
 /**
  * Zestaw operacji, które właściciel nowego sklepiku dostaje zawężone do
  * swojego sales_channel — patrz "RBAC / bezpieczeństwo" w
- * docs/plans/multi-store-platform.md. Świadomie tylko sales_channel+product
- * na start (zgodnie z Migration Path krok 3 tamtego planu); orders/customers
- * później, tym samym wzorcem.
+ * docs/plans/multi-store-platform.md.
  *
  * inventory_item/price dodane 2026-07-18 — bez nich POST /admin/products
  * odrzuca każdą próbę utworzenia produktu z wariantem (endpoint wymaga tych
@@ -36,6 +34,12 @@ import { createRemoteLinkStep } from "@medusajs/core-flows"
  * bezużyteczna — nie da się sprzedawać produktu bez ceny), do
  * doprecyzowania jeśli okaże się realnym problemem (patrz Open Questions
  * w multi-store-platform.md).
+ *
+ * order:read dodane 2026-07-18 — właściciel widzi tylko zamówienia z
+ * własnego sklepiku (order ma bezpośrednią kolumnę sales_channel_id,
+ * scoping prostszy niż dla product). Świadomie tylko odczyt na start —
+ * edycja/anulowanie zamówień (order:update i pokrewne) to osobna decyzja
+ * produktowa, nie dodana tutaj bez wyraźnej potrzeby.
  */
 const SKLEPIK_OWNER_PERMISSIONS: { resource: string; operation: string }[] = [
   { resource: "sales_channel", operation: "read" },
@@ -50,6 +54,7 @@ const SKLEPIK_OWNER_PERMISSIONS: { resource: string; operation: string }[] = [
   { resource: "price", operation: "create" },
   { resource: "price", operation: "read" },
   { resource: "price", operation: "update" },
+  { resource: "order", operation: "read" },
 ]
 
 /**
