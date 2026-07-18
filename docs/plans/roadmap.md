@@ -68,8 +68,8 @@ Ten dokument zastępuje `pawelekbyra/sklepik/docs/plans/medusa-migration.md` jak
 **Stan zweryfikowany na koniec sesji:** `szopifaj.service` i `szopifaj-storefront.service` aktywne, `/health`+`/app` 200, storefront 200. 7 nowych commitów lokalnych (niepushowane — brak danych logowania GitHub na serwerze), `git status` czysty. Właściciel sklepiku może dziś: założyć sklepik, zobaczyć/edytować tylko swój `sales_channel`, tworzyć/czytać/edytować/usuwać własne produkty z cenami — i nie widzi niczego z cudzych sklepików.
 
 **Co dalej (następne uruchomienie/sesja):**
-- Widget "przełącznik sklepiku" w topbarze panelu admina + custom route `/app/sklepiki/nowy` (Design Details → Panel "moje sklepiki", nierozpoczęte) — jedyny brakujący kawałek żeby to było użyteczne przez UI, nie tylko przez surowe API.
-- Rozszerzyć scoped policies na `orders` (ostatni zasób z Design Details, jeszcze nietknięty).
+- Widget "przełącznik sklepiku" w topbarze panelu admina + custom route `/app/sklepiki/nowy` (Design Details → Panel "moje sklepiki", nierozpoczęte) — jedyny brakujący kawałek żeby to było użyteczne przez UI, nie tylko przez surowe API. Uwaga architektoniczna do rozstrzygnięcia: właściwe miejsce na kod widgetu to `app/src/admin/widgets/` (potwierdzone czytaniem `admin-vite-plugin`), ale `app/` nie jest w git — wymaga decyzji jak wersjonować kod widgetu, zanim się go napisze.
+- ✅ **Zrobione (2026-07-18):** scoped policies na `orders` (GET/POST `:id`) + `order:read` dla właściciela sklepiku. Przetestowane end-to-end (własne 200, cudze 403). Znany brak: lista `/admin/orders` nadal nie zawężona (jak products) — do zamknięcia przez RLS.
 - Middleware storefrontu resolvujący subdomenę → sales_channel/publishable key (Migration Path krok 6) — storefront wciąż ma jeden zahardkodowany klucz.
 
 ### 2026-07-18, część 2 (Postgres RLS — właściciel zapytał czy model RBAC to nie skrót)
