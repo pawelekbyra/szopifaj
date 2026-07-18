@@ -55,6 +55,7 @@ export class RbacRepository extends MikroOrmBase {
         p.key,
         p.resource,
         p.operation,
+        p.resource_id,
         p.name,
         p.description,
         p.metadata,
