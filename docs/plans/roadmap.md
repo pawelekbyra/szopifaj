@@ -100,3 +100,26 @@ Przetestowane end-to-end żądaniami z ręcznie ustawianym nagłówkiem `Host` (
 
 **Co dalej:** widget przełącznika sklepiku w panelu (blokowany kwestią gdzie wersjonować kod — `app/src/admin/` nie jest w git, patrz wpis wyżej), scoping list endpointów (przez RLS, gdy warstwa aplikacji RLS zostanie poprawnie zrobiona), rozważenie własnej domeny dla prawdziwych subdomen sklepików.
 
+### 2026-07-18, część 4 (⏸️ PRZERWANE NA ŻYCZENIE WŁAŚCICIELA — widget panelu, w trakcie)
+
+**Kontekst przerwania:** właściciel poprosił o zatrzymanie w tym miejscu — potrzebował agenta gdzie indziej, nie awaria/błąd. Usługa produkcyjna zdrowa i nietknięta (`/health`+`/app`+storefront 200 zweryfikowane bezpośrednio przed przerwaniem).
+
+**Zrobione i zacommitowane (kod kompletny, ale build panelu NIEZWERYFIKOWANY — patrz "Następny krok"):**
+1. **Rozwiązana blokada architektoniczna z poprzedniej sesji:** `.gitignore` miał blanket `/app/` (dodany 2026-07-17 po wypadku z `git stash -u`) — chronił sekrety/build, ale uniemożliwiał trackowanie prawdziwego kodu. Zawężone do konkretnych ścieżek (`.env`, `dist/`, `.medusa/`, `public/`, `server.log`) — `app/src/`, `medusa-config.js`, `package.json`, `tsconfig.json` są teraz trackowane (zweryfikowane: brak sekretów w tych plikach, tylko `process.env.X`).
+2. **Widget "moje sklepiki"** w strefie `topbar` (`app/src/admin/widgets/sklepik-switcher.tsx`) — dropdown z listą sklepików admina (z `GET /admin/sklepiki`) + link do zakładania nowego. Nawigacyjny, nie filtruje widoków (nierozstrzygnięte jak głębiej zintegrować z listami produktów/zamówień).
+3. **Custom route `/sklepiki/nowy`** (`app/src/admin/routes/sklepiki/nowy/page.tsx`) — formularz (nazwa/kraj/waluta) wołający `POST /admin/sklepiki`, pokazuje handle+publishable key po sukcesie.
+4. Oba pliki używają `app/src/admin/lib/sdk.ts` — ten sam wzorzec (`@medusajs/js-sdk`, `auth: {type: "session"}`) co w pluginach loyalty/draft-order.
+
+**⚠️ NASTĘPNY KROK (dokładnie tu przerwano):** kod nigdy nie przeszedł przez pełny build panelu, więc **nieprzetestowany nawet czy się kompiluje w kontekście reszty pluginów**, a tym bardziej czy renderuje się poprawnie w przeglądarce. Historia prób:
+- `medusa build --admin-only` (z `app/` jako cwd) → nieudane: krok lintingu wysypał się (`eslint.findConfigFile is not a function`) — **niezwiązane z tym kodem, problem wersji/konfiguracji eslint w tym repo**, obejście: `--lint false`.
+- Z `--lint false` → build faktycznie ruszył, ale wysypał się na **nieaktualnym, wcześniej skompilowanym bundlu pluginu loyalty** (`packages/plugins/loyalty/.medusa/server/src/admin/index.mjs`, błąd: `"z" is not exported by ".../zod.js"`) — też niezwiązane z moim kodem, ten plugin nie był przebudowywany od jakiejś zmiany w `packages/core/framework`.
+- Próba naprawy: `yarn turbo run build:plugin --filter=@medusajs/loyalty-plugin --force` (wymusza rebuild loyalty + wszystkiego co go używa) — **nie zdążyła się skończyć / padła** po ~15 minutach, 25/38 zadań, `@medusajs/dashboard#build` zakończył się kodem 129 (prawdopodobnie SIGHUP/zabite z zewnątrz albo zasoby, nie błąd w kodzie — build realnie się posuwał, nie zapętlił). Przerwane w tym momencie na życzenie właściciela.
+
+**Zalecany następny krok:** spróbować **węższego** podejścia zamiast pełnego `--force` na całe drzewo zależności loyalty:
+1. Sprawdzić, czy `yarn build` (pełny, bez `--force`, standardowy — ten codziennie działający w tej sesji) sam z siebie odświeży `packages/plugins/loyalty/.medusa/server/src/admin/index.mjs` poprawnie (możliwe że problem był tylko w kombinacji z `--force` i brakiem cache, nie w samym kodzie loyalty).
+2. Jeśli nie — zbadać dokładnie **dlaczego** loyalty ma nieaktualny bundle: sprawdzić `git log` na `packages/core/framework/src/deps/zod.ts` (albo gdziekolwiek `zod` jest re-eksportowany) pod kątem zmiany, która mogła zerwać kompatybilność z już zbudowanym `.mjs`.
+3. Dopiero potem: `medusa build --admin-only --lint false` (z `app/` jako cwd) żeby zbudować panel z nowym widgetem, `sudo systemctl restart szopifaj`, zweryfikować w przeglądarce że widget faktycznie się pokazuje i działa (kliknięcie, lista sklepików, formularz zakładania nowego) — **to jeszcze nie było zrobione ani razu, nawet przez curl**, sam kod nigdy nie widział przeglądarki.
+4. Osobno naprawić `eslint.findConfigFile is not a function` (niezależny, mniejszy problem) — do zbadania czy to wersja eslint w root `package.json` niezgodna z tym co woła `medusa build`.
+
+**Stan repo na przerwanie:** `git status` czysty w obu repo (`szopifaj`, `szopifaj-storefront`), wszystko zacommitowane lokalnie, nic niepushowane (jak zawsze — brak danych logowania GitHub). Żadnych osieroconych procesów w tle (zweryfikowane `ps aux`).
+
