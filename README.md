@@ -36,13 +36,24 @@ Minimalne dane sklepu założone ręcznie przez Admin API: region "Polska" (kraj
 
 ### Storefront demonstracyjny (od 2026-07-17)
 
-**https://store.141-253-103-172.nip.io** — standardowy [Medusa Next.js starter](https://github.com/medusajs/nextjs-starter-medusa) (MIT), sklonowany bez modyfikacji, podłączony do backendu powyżej przez publishable API key. **To nie jest kod ekosystemu Sklepik** — świadoma decyzja (patrz sesja 2026-07-17), żeby szybko zweryfikować że backend faktycznie obsługuje realny storefront. Docelowo do zastąpienia przez `sklepikFront` podłączony do tego backendu, albo do usunięcia, gdy `sklepikFront` przejmie tę rolę.
+**https://store.141-253-103-172.nip.io** — standardowy [Medusa Next.js starter](https://github.com/medusajs/nextjs-starter-medusa) (MIT), sklonowany bez modyfikacji (poza middleware'em opisanym niżej), podłączony do backendu powyżej. **To nie jest kod ekosystemu Sklepik** — świadoma decyzja (patrz sesja 2026-07-17), żeby szybko zweryfikować że backend faktycznie obsługuje realny storefront. Docelowo do zastąpienia przez `sklepikFront` podłączony do tego backendu, albo do usunięcia, gdy `sklepikFront` przejmie tę rolę.
 
 - Kod na serwerze: `~/szopifaj-storefront` (osobne repo, sklonowane bezpośrednio z GitHuba Medusy, nie jest częścią tego repo ani zapisane nigdzie w kontroli wersji tego ekosystemu)
 - `.env.local` na serwerze: `MEDUSA_BACKEND_URL`, `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY`, `NEXT_PUBLIC_BASE_URL=https://store.141-253-103-172.nip.io`, `NEXT_PUBLIC_DEFAULT_REGION=pl`
 - Usługa systemd: `szopifaj-storefront.service` (`next start -p 8000`), zależna od `szopifaj.service`
 - Nginx + osobny certyfikat Let's Encrypt dla `store.141-253-103-172.nip.io` (wykorzystuje wildcard DNS `nip.io` — dowolna subdomena tej postaci rozwiązuje się na ten sam adres IP)
+- **Od 2026-07-18: ten sam proces obsługuje też każdy sklepik pod `serowymichal.pl`** (patrz sekcja niżej) — middleware (`src/middleware.ts`) rozpoznaje sklepik po pierwszym segmencie hosta i dociąga właściwy publishable key przez `GET /store/sklepiki/resolve`, patrz `docs/plans/multi-store-platform.md`.
 
-**Nie zrobione / do zrobienia:** katalog produktów pusty (0 produktów) — sklep renderuje się, ale nie ma czego kupić. Storefront demo nie jest podłączony do żadnej bramki płatności. Docelowa integracja z `sklepikFront` i modułem fiskalnym — patrz [`docs/plans/vision-2026.md`](docs/plans/vision-2026.md).
+**Nie zrobione / do zrobienia:** katalog produktów pusty (0 produktów) na sklepikach demo/testowych — sklep renderuje się, ale nie ma czego kupić. Storefront nie jest podłączony do żadnej bramki płatności (potwierdzone też `docs/plans/module-audit-2026.md` — jedyny aktywny payment provider to no-op `system`, nikt nie może dziś realnie zapłacić). Docelowa integracja z `sklepikFront` i modułem fiskalnym — patrz [`docs/plans/vision-2026.md`](docs/plans/vision-2026.md).
+
+### Domena `serowymichal.pl` (od 2026-07-18)
+
+Publiczna domena (home.pl), rozdzielona nginx-em na trzy warstwy — szczegóły techniczne i historia decyzji w `docs/plans/multi-store-platform.md`, sekcja "Public self-signup":
+
+- **`serowymichal.pl` / `www.serowymichal.pl`** — statyczna wizytówka (dziś: tytuł + adres firmy), katalog `~/serowymichal-www` na serwerze, bez backendu.
+- **`sklepiki.serowymichal.pl`** — publiczny formularz zakładania sklepiku/logowania (statyczny HTML/CSS/JS, katalog `~/sklepiki`, woła bezpośrednio API backendu z przeglądarki). Zakładanie konta jest **otwarte publicznie**, bez zaproszenia (`POST /admin/sklepiki/self-signup`) — świadoma zmiana wcześniejszej decyzji "zamknięta/zaproszeniowa".
+- **`nazwa-sklepiku.serowymichal.pl`** (dowolna inna subdomena) — proxy do storefrontu (port 8000, patrz wyżej), jeden wspólny proces obsługuje wszystkie sklepiki.
+- DNS: rekordy A dla `@`, `www`, i wildcard `*` → `141.253.103.172`.
+- SSL: certyfikat wildcard Let's Encrypt (`serowymichal-wildcard`, DNS-01) obejmujący `serowymichal.pl` + `*.serowymichal.pl`, ważny do 2026-10-16. **Odnawianie nie jest automatyczne** (wydany przez `certbot --manual`, wymaga ręcznego powtórzenia z nowym rekordem TXT).
 
 Licencja: MIT (odziedziczona z Medusa.js, patrz [`LICENSE`](LICENSE)).
