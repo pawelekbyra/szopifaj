@@ -3,7 +3,12 @@ import {
   validateAndTransformQuery,
 } from "@medusajs/framework"
 import { maybeApplyLinkFilter, MiddlewareRoute } from "@medusajs/framework/http"
-import { FeatureFlag, PolicyOperation } from "@medusajs/framework/utils"
+import {
+  ContainerRegistrationKeys,
+  FeatureFlag,
+  PolicyOperation,
+} from "@medusajs/framework/utils"
+import type { AuthenticatedMedusaRequest } from "@medusajs/framework/http"
 import multer from "multer"
 import IndexEngineFeatureFlag from "../../../feature-flags/index-engine"
 import { DEFAULT_BATCH_ENDPOINTS_SIZE_LIMIT } from "../../../utils/middlewares"
@@ -37,6 +42,28 @@ import {
 } from "./validators"
 
 const upload = multer({ storage: multer.memoryStorage() })
+
+/**
+ * Wyciąga sales_channel_id produktu na potrzeby scoped RBAC (multi-store,
+ * patrz docs/plans/multi-store-platform.md). Produkt w naszym modelu należy
+ * do jednego sklepiku (Key Decision 3 tamtego planu — osobny katalog per
+ * admin, nie współdzielony), więc bierzemy pierwszy powiązany sales_channel;
+ * link jest technicznie many-to-many w Medusie, ale ten produkt nie ma
+ * dziś przypadku wielu sklepików na raz. Brak powiązania → brak resourceId →
+ * dostęp tylko dla polityk globalnych (super-admin), co jest bezpiecznym
+ * domyślnym zachowaniem dla produktu bez jednoznacznego właściciela.
+ */
+async function extractProductSalesChannelId(
+  req: AuthenticatedMedusaRequest
+): Promise<string | undefined> {
+  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
+  const { data } = await query.graph({
+    entity: "product",
+    fields: ["id", "sales_channels.id"],
+    filters: { id: req.params.id },
+  })
+  return data[0]?.sales_channels?.[0]?.id
+}
 
 export const adminProductRoutesMiddlewares: MiddlewareRoute[] = [
   {
@@ -184,6 +211,14 @@ export const adminProductRoutesMiddlewares: MiddlewareRoute[] = [
         QueryConfig.retrieveProductQueryConfig
       ),
     ],
+    // Zawężenie do sklepików admina — dodane 2026-07-18 (multi-store, patrz
+    // docs/plans/multi-store-platform.md). Polityka globalna (brak
+    // resource_id, np. wildcard super-admina) nadal przechodzi zawsze.
+    scopedPolicies: {
+      policies: [{ resource: Entities.product, operation: PolicyOperation.read }],
+      resourceIdField: "id",
+      resourceIdExtractor: extractProductSalesChannelId,
+    },
   },
   {
     method: ["POST"],
@@ -195,6 +230,11 @@ export const adminProductRoutesMiddlewares: MiddlewareRoute[] = [
         QueryConfig.retrieveProductQueryConfig
       ),
     ],
+    scopedPolicies: {
+      policies: [{ resource: Entities.product, operation: PolicyOperation.update }],
+      resourceIdField: "id",
+      resourceIdExtractor: extractProductSalesChannelId,
+    },
   },
   {
     method: ["DELETE"],
@@ -205,6 +245,11 @@ export const adminProductRoutesMiddlewares: MiddlewareRoute[] = [
         QueryConfig.retrieveProductQueryConfig
       ),
     ],
+    scopedPolicies: {
+      policies: [{ resource: Entities.product, operation: PolicyOperation.delete }],
+      resourceIdField: "id",
+      resourceIdExtractor: extractProductSalesChannelId,
+    },
     policies: [
       {
         resource: Entities.product,
