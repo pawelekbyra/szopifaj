@@ -1,4 +1,5 @@
 import { Modules } from "@medusajs/framework/utils"
+import type { LinkDefinition } from "@medusajs/framework/types"
 import {
   WorkflowData,
   WorkflowResponse,
@@ -8,10 +9,28 @@ import {
 import {
   createApiKeysWorkflow,
   createRegionsWorkflow,
+  createRbacPoliciesWorkflow,
+  createRbacRolesWorkflow,
   createSalesChannelsWorkflow,
   linkSalesChannelsToApiKeyWorkflow,
 } from "@medusajs/core-flows"
 import { createRemoteLinkStep } from "@medusajs/core-flows"
+
+/**
+ * Zestaw operacji, które właściciel nowego sklepiku dostaje zawężone do
+ * swojego sales_channel — patrz "RBAC / bezpieczeństwo" w
+ * docs/plans/multi-store-platform.md. Świadomie tylko sales_channel+product
+ * na start (zgodnie z Migration Path krok 3 tamtego planu); orders/customers
+ * później, tym samym wzorcem.
+ */
+const SKLEPIK_OWNER_PERMISSIONS: { resource: string; operation: string }[] = [
+  { resource: "sales_channel", operation: "read" },
+  { resource: "sales_channel", operation: "update" },
+  { resource: "product", operation: "create" },
+  { resource: "product", operation: "read" },
+  { resource: "product", operation: "update" },
+  { resource: "product", operation: "delete" },
+]
 
 /**
  * Zakłada nowy sklepik: sales_channel (jednostka "sklepik" w naszym modelu
@@ -20,9 +39,16 @@ import { createRemoteLinkStep } from "@medusajs/core-flows"
  * zalogowanego admina z nowym sklepikiem (link user_sales_channel).
  *
  * NIE tworzy nowej encji `Store` — świadomie odrzucona ścieżka, patrz plan.
- * NIE nadaje uprawnień RBAC do zarządzania sklepikiem — to osobny krok
- * (patrz packages/modules/rbac, rbac_policy.resource_id), bo scoping
- * uprawnień i widoczność sklepiku w panelu to dwie różne sprawy.
+ *
+ * Nadaje właścicielowi zawężone uprawnienia RBAC (SKLEPIK_OWNER_PERMISSIONS
+ * powyżej, resource_id = id nowego sales_channel) przez nową rolę
+ * `Właściciel: {nazwa}` — bez tego admin mógłby założyć sklepik, ale nie
+ * mógłby nim zarządzać (brak jakiejkolwiek roli RBAC). Nie przekazujemy
+ * actor_id/actor do createRbacRolesWorkflow celowo — to systemowe nadanie
+ * uprawnień w ramach kontrolowanego zakresu (tylko nowo utworzony
+ * sales_channel), nie ogólne "użytkownik nadaje dowolne uprawnienia", więc
+ * walidacja przeciw eskalacji uprawnień (validateUserPermissionsStep) nie ma
+ * tu zastosowania — i blokowałaby całkiem pierwszego admina bez uprawnień.
  */
 
 export type CreateSklepikWorkflowInput = {
@@ -95,13 +121,48 @@ export const createSklepikWorkflow = createWorkflow(
       })),
     })
 
+    const scopedPolicies = createRbacPoliciesWorkflow.runAsStep({
+      input: transform({ salesChannel }, (data) => ({
+        policies: SKLEPIK_OWNER_PERMISSIONS.map(({ resource, operation }) => ({
+          key: `${resource}:${operation}:${data.salesChannel.id}`,
+          resource,
+          operation,
+          resource_id: data.salesChannel.id,
+          name: `${resource}:${operation} (${data.salesChannel.id})`,
+          description: `Automatycznie utworzone przy zakładaniu sklepiku — zawężone do jednego sales_channel.`,
+        })),
+      })),
+    })
+
+    const ownerRole = createRbacRolesWorkflow.runAsStep({
+      input: transform({ salesChannel, scopedPolicies, input }, (data) => ({
+        roles: [
+          {
+            name: `Właściciel: ${data.input.name}`,
+            description: `Automatycznie utworzona rola właściciela sklepiku "${data.input.name}" (${data.salesChannel.id}).`,
+            policy_ids: data.scopedPolicies.map((p: { id: string }) => p.id),
+          },
+        ],
+      })),
+    })
+
+    // Jedno wywołanie createRemoteLinkStep na workflow — to pojedynczy,
+    // predefiniowany krok ("create-remote-links"), nie da się go użyć
+    // dwukrotnie w tym samym workflow (kolizja id kroku).
     createRemoteLinkStep(
-      transform({ salesChannel, input }, (data) => [
-        {
-          [Modules.USER]: { user_id: data.input.adminUserId },
-          [Modules.SALES_CHANNEL]: { sales_channel_id: data.salesChannel.id },
-        },
-      ])
+      transform({ salesChannel, ownerRole, input }, (data) => {
+        const links: LinkDefinition[] = [
+          {
+            [Modules.USER]: { user_id: data.input.adminUserId },
+            [Modules.SALES_CHANNEL]: { sales_channel_id: data.salesChannel.id },
+          },
+          {
+            [Modules.USER]: { user_id: data.input.adminUserId },
+            [Modules.RBAC]: { rbac_role_id: data.ownerRole[0].id },
+          },
+        ]
+        return links
+      })
     )
 
     return new WorkflowResponse(
