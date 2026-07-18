@@ -15,6 +15,27 @@ import {
   linkSalesChannelsToApiKeyWorkflow,
 } from "@medusajs/core-flows"
 import { createRemoteLinkStep } from "@medusajs/core-flows"
+import { randomBytes } from "node:crypto"
+
+/**
+ * Identyfikator subdomeny sklepiku (np. "moj-sklepik-a1b2c3" →
+ * moj-sklepik-a1b2c3.szopifaj...) — patrz docs/plans/multi-store-platform.md,
+ * sekcja "Storefront". Losowy sufiks zamiast sprawdzania unikalności przez
+ * zapytanie-potem-zapis (wyścig przy równoczesnym zakładaniu dwóch
+ * sklepików o tej samej nazwie) — prostsze i wystarczające przy skali
+ * "kilkanaście-kilkadziesiąt sklepów".
+ */
+function generateSklepikHandle(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "") // usuń znaki diakrytyczne (ą→a itd.)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+  const suffix = randomBytes(3).toString("hex")
+  return slug ? `${slug}-${suffix}` : suffix
+}
 
 /**
  * Zestaw operacji, które właściciel nowego sklepiku dostaje zawężone do
@@ -91,6 +112,7 @@ export type CreateSklepikWorkflowOutput = {
   salesChannelId: string
   regionId: string
   publishableApiKey: string
+  handle: string
 }
 
 export const createSklepikWorkflowId = "create-sklepik"
@@ -103,7 +125,10 @@ export const createSklepikWorkflow = createWorkflow(
     const salesChannels = createSalesChannelsWorkflow.runAsStep({
       input: {
         salesChannelsData: [
-          transform({ input }, (data) => ({ name: data.input.name })),
+          transform({ input }, (data) => ({
+            name: data.input.name,
+            metadata: { handle: generateSklepikHandle(data.input.name) },
+          })),
         ],
       },
     })
@@ -195,6 +220,8 @@ export const createSklepikWorkflow = createWorkflow(
         salesChannelId: data.salesChannel.id,
         regionId: data.region.id,
         publishableApiKey: data.apiKey.token,
+        handle: (data.salesChannel.metadata as { handle?: string } | null)
+          ?.handle as string,
       }))
     )
   }
